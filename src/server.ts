@@ -21,6 +21,9 @@ const worldcoinRpId = resolveWorldcoinRpId();
 function sendJson(res: ServerResponse, statusCode: number, value: unknown) {
   const body = JSON.stringify(value, null, 2);
   res.writeHead(statusCode, {
+    "access-control-allow-origin": process.env.CORS_ORIGIN ?? "*",
+    "access-control-allow-headers": "content-type, authorization",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(body),
   });
@@ -29,6 +32,9 @@ function sendJson(res: ServerResponse, statusCode: number, value: unknown) {
 
 function sendText(res: ServerResponse, statusCode: number, value: string) {
   res.writeHead(statusCode, {
+    "access-control-allow-origin": process.env.CORS_ORIGIN ?? "*",
+    "access-control-allow-headers": "content-type, authorization",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
     "content-type": "text/plain; charset=utf-8",
     "content-length": Buffer.byteLength(value),
   });
@@ -120,6 +126,16 @@ const server = createServer(async (req, res) => {
     }
 
     const url = new URL(req.url, `http://${req.headers.host ?? `${hostname}:${port}`}`);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": process.env.CORS_ORIGIN ?? "*",
+        "access-control-allow-headers": "content-type, authorization",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+      });
+      res.end();
+      return;
+    }
 
     if (req.method === "GET" && url.pathname === "/healthz") {
       sendJson(res, 200, { ok: true, mode, state_path: statePath });

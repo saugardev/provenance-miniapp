@@ -1,0 +1,120 @@
+:root {
+  font-family: "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background: #111;
+  color: #f4f4f4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 80% -20%, #2a2a2a 0%, #111 60%);
+}
+
+.page {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.card {
+  max-width: 900px;
+  margin: 0 auto;
+  border: 1px solid #2d2d2d;
+  border-radius: 16px;
+  padding: 20px;
+  background: rgba(20, 20, 20, 0.9);
+  backdrop-filter: blur(4px);
+}
+
+h1,
+h2 {
+  margin: 0 0 12px;
+}
+
+.muted,
+.hint {
+  color: #aaaaaa;
+  margin: 0 0 12px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.field span {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #bdbdbd;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #161616;
+  color: #fff;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.row.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.button {
+  border: 1px solid #fff;
+  background: #fff;
+  color: #111;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button.secondary {
+  margin-bottom: 12px;
+  background: transparent;
+  color: #fff;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.result {
+  margin-top: 16px;
+  border: 1px solid #303030;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+pre {
+  margin: 0;
+  padding: 12px;
+  background: #0f0f0f;
+  color: #f0f0f0;
+  overflow: auto;
+  max-height: 320px;
+}
+
+.error {
+  color: #ff6f6f;
+}
+
+@media (max-width: 800px) {
+  .row.two {
+    grid-template-columns: 1fr;
+  }
+}

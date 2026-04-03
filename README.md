@@ -1,31 +1,40 @@
 # worldcoin-miniapp
 
-Node + TypeScript backend for World ID first-entry ingestion and signing.
+Unified Next.js app (UI + API routes) for World ID 4.0 image-hash verification and backend signing.
 
 ## What it does
 
-- Verifies World ID proof with `POST /api/v4/verify/{rp_id}`.
-- Signs canonical image-hash message server-side (Ed25519).
-- Writes backend state and latest signed first-entry JSON.
-- Uses deterministic public-values wire format:
-  - `[u32 little-endian length][JSON-encoded entry bytes]` repeated
-  - `public_values_commitment_hash_hex = SHA-256(wire bytes)`
+- One deployment for frontend + backend (good for Vercel).
+- Browser computes `sha256:<64-hex>` of uploaded image.
+- Mini app can call World MiniKit verify directly.
+- Server route verifies proof against World verify API.
+- Server signs canonical message with Ed25519 and stores payload.
 
-## Run
+## Canonical Signature Message
+
+`livy-worldcoin-v1|content_hash|nullifier_hash|action|signal|timestamp_ms|content_id`
+
+## Run (local)
 
 From `livy-hackathon`:
 
 ```bash
 cd /path/to/livy-hackathon/worldcoin-miniapp
-npm run dev
+pnpm install
+pnpm dev
 ```
 
-The server listens on `http://127.0.0.1:3000` by default.
-`npm run dev` loads env vars from `../.env` (that is `/livy-hackathon/.env`).
+App runs on `http://127.0.0.1:3000`.
 
-## API
+`pnpm dev` loads env vars from `../.env` (that is `/livy-hackathon/.env`).
 
-1. Submit image hash + World ID proof:
+## API routes
+
+- `GET /api/healthz`
+- `GET /api/attestations`
+- `POST /api/submit-image`
+
+Example submit:
 
 ```bash
 curl -sX POST http://127.0.0.1:3000/api/submit-image \
@@ -45,20 +54,20 @@ curl -sX POST http://127.0.0.1:3000/api/submit-image \
   }' | jq .
 ```
 
-`content_hash` must be `sha256:<64 hex>`.
+## Required env
 
-Response includes `payload` (signed first-entry JSON) and persists:
-
-- `worldcoin-miniapp/state/backend-state.json`
-- `worldcoin-miniapp/state/latest-worldcoin-first-entry.json`
-
-## Required Env
-
-- `WORLDCOIN_RP_ID` (use `rp_...` from World Developer Portal; `app_...` is treated as legacy-compatible)
+- `WORLDCOIN_RP_ID` (`rp_...` preferred; `app_...` accepted as legacy-compatible)
 
 Optional:
+
 - `WORLDCOIN_API_KEY`
-- `WORLDCOIN_VERIFY_BASE_URL` (default: `https://developer.world.org`)
+- `WORLDCOIN_VERIFY_BASE_URL` (default `https://developer.world.org`)
 - `WORLDCOIN_MODE` (`dev` or `build`)
 
-This backend only accepts World ID verification results from the World verify API.
+## Vercel
+
+Deploy this folder (`worldcoin-miniapp`) as a Next.js project.
+
+- Build command: `pnpm build`
+- Start command: `pnpm start`
+- Set env vars in Vercel project settings.
