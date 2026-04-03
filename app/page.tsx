@@ -26,6 +26,32 @@ function asVerificationLevel(value: string): VerificationLevel {
   return value as VerificationLevel;
 }
 
+function extractIdKitResponse(raw: any, action: string, signal: string, defaultLevel: string): any | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  if (Array.isArray(raw.responses) && raw.responses.length > 0) {
+    return raw;
+  }
+
+  if (raw.proof && raw.merkle_root && raw.nullifier_hash) {
+    return {
+      action,
+      signal,
+      protocol_version: String(raw.protocol_version ?? "3.0"),
+      responses: [
+        {
+          proof: String(raw.proof),
+          merkle_root: String(raw.merkle_root),
+          nullifier: String(raw.nullifier_hash),
+          identifier: String(raw.verification_level ?? defaultLevel),
+        },
+      ],
+    };
+  }
+
+  return null;
+}
+
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -57,6 +83,7 @@ export default function Page() {
   const [miniKitReady, setMiniKitReady] = useState(false);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState("");
+  const [idkitResponse, setIdkitResponse] = useState<any | null>(null);
 
   const hashPreview = useMemo(() => {
     if (!contentHash) return "";
@@ -74,6 +101,7 @@ export default function Page() {
 
   useEffect(() => {
     setProof((prev) => ({ ...prev, signal: contentHash }));
+    setIdkitResponse(null);
   }, [contentHash]);
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -123,12 +151,24 @@ export default function Page() {
 
       const anyOut = out as any;
       const payload = anyOut?.finalPayload ?? anyOut?.payload ?? anyOut ?? {};
+      const normalizedIdkit = extractIdKitResponse(payload, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb");
+      if (!normalizedIdkit) {
+        throw new Error("MiniKit response did not include a valid IDKit payload.");
+      }
+      setIdkitResponse(normalizedIdkit);
+
+      const resp0 = Array.isArray(normalizedIdkit?.responses) ? normalizedIdkit.responses[0] : undefined;
       const nextProof = {
-        proof: String(payload?.proof ?? ""),
-        merkle_root: String(payload?.merkle_root ?? ""),
-        nullifier_hash: String(payload?.nullifier_hash ?? ""),
-        verification_level: String(payload?.verification_level ?? proof.verification_level),
-        version: payload?.version != null ? String(payload.version) : proof.version,
+        proof: String(resp0?.proof ?? payload?.proof ?? ""),
+        merkle_root: String(resp0?.merkle_root ?? payload?.merkle_root ?? ""),
+        nullifier_hash: String(resp0?.nullifier ?? resp0?.nullifier_hash ?? payload?.nullifier_hash ?? ""),
+        verification_level: String(resp0?.identifier ?? payload?.verification_level ?? proof.verification_level),
+        version:
+          normalizedIdkit?.protocol_version != null
+            ? String(normalizedIdkit.protocol_version)
+            : payload?.version != null
+              ? String(payload.version)
+              : proof.version,
       };
 
       if (!nextProof.proof || !nextProof.merkle_root || !nextProof.nullifier_hash) {
@@ -160,6 +200,7 @@ export default function Page() {
         content_id: contentId.trim(),
         content_hash: contentHash,
         timestamp_ms: Date.now(),
+        idkit_response: idkitResponse ?? undefined,
         worldcoin_proof: {
           action: proof.action.trim(),
           signal: contentHash,
@@ -258,6 +299,7 @@ export default function Page() {
           {busyWorldVerify ? "Verifying..." : "Try World MiniKit Verify"}
         </button>
         <p className="hint">MiniKit: {miniKitReady ? "installed" : "not detected (open in World App)"}</p>
+        <p className="hint">IDKit payload: {idkitResponse ? "captured" : "not captured yet"}</p>
 
         <button className="button" disabled={busySubmit} onClick={submit}>
           {busySubmit ? "Submitting..." : "Verify + Sign"}

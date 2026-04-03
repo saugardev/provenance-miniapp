@@ -43,13 +43,18 @@ export async function verifyWorldcoinProof(input: VerifyWorldcoinInput): Promise
     method: "POST",
     headers,
     body: JSON.stringify({
-      protocol_version: "3.0",
       action: input.action,
       signal: input.signal,
-      verification_level: input.verification_level,
-      proof: input.proof,
-      nullifier_hash: input.nullifier_hash,
-      merkle_root: input.merkle_root,
+      protocol_version: "3.0",
+      responses: [
+        {
+          protocol_version: "3.0",
+          proof: input.proof,
+          merkle_root: input.merkle_root,
+          nullifier: input.nullifier_hash,
+          identifier: input.verification_level,
+        },
+      ],
     }),
   });
 
