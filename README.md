@@ -26,7 +26,7 @@ pnpm dev
 
 App runs on `http://127.0.0.1:3000`.
 
-`pnpm dev` loads env vars from `../.env` (that is `/livy-hackathon/.env`).
+Use standard Next.js env files (for example `.env.local`) or Vercel Project Environment Variables.
 
 ## API routes
 
