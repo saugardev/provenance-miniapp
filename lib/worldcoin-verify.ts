@@ -65,3 +65,34 @@ export async function verifyWorldcoinProof(input: VerifyWorldcoinInput): Promise
     session_id: payload?.session_id,
   };
 }
+
+export async function verifyIdKitResponse(idkitResponse: unknown): Promise<VerifyWorldcoinResult> {
+  const rpId = resolveWorldcoinRpId();
+  const apiBase = process.env.WORLDCOIN_VERIFY_BASE_URL ?? "https://developer.world.org";
+  const url = `${apiBase}/api/v4/verify/${rpId}`;
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (process.env.WORLDCOIN_API_KEY) {
+    headers.authorization = `Bearer ${process.env.WORLDCOIN_API_KEY}`;
+  }
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(idkitResponse),
+  });
+
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    return { success: false, detail: { status: resp.status, payload } };
+  }
+
+  return {
+    success: payload?.success === true,
+    detail: payload,
+    environment: payload?.environment,
+    session_id: payload?.session_id,
+  };
+}

@@ -243,7 +243,10 @@ export default function Page() {
         <div className="row two">
           <label className="field">
             <span>verification_level</span>
-            <input value={proof.verification_level} onChange={(e) => updateProof("verification_level", e.target.value)} />
+            <select value={proof.verification_level} onChange={(e) => updateProof("verification_level", e.target.value)}>
+              <option value="orb">orb</option>
+              <option value="device">device</option>
+            </select>
           </label>
           <label className="field">
             <span>version</span>

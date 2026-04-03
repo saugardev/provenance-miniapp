@@ -7,10 +7,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test:programmatic": "node ./scripts/test-programmatic.mjs",
     "print": "node --env-file=../.env --experimental-strip-types src/cli.ts",
     "dev:legacy-api": "node --env-file=../.env --experimental-strip-types src/server.ts"
   },
   "dependencies": {
+    "@worldcoin/idkit": "^4.0.11",
     "@worldcoin/minikit-js": "^1.11.0",
     "next": "^15.3.1",
     "react": "^18.3.1",

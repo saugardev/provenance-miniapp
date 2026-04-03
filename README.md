@@ -10,6 +10,7 @@ Unified Next.js app (UI + API routes) for World ID 4.0 image-hash verification a
 - Server route verifies proof against World verify API.
 - Server signs canonical message with Ed25519 and stores payload.
 - World verify `signal` is forced to `content_hash` to bind proof to the image.
+- Accepted verification levels: `orb` and `device`.
 
 ## Canonical Signature Message
 
@@ -29,10 +30,25 @@ App runs on `http://127.0.0.1:3000`.
 
 Use standard Next.js env files (for example `.env.local`) or Vercel Project Environment Variables.
 
+## Programmatic test (no UI)
+
+```bash
+cd /path/to/livy-hackathon/worldcoin-miniapp
+pnpm test:programmatic
+```
+
+This starts:
+- a mock World `/api/v4/verify/{rp_id}` server
+- the Next app
+
+Then it verifies `/api/verify-proof` and `/api/submit-image` end-to-end and prints a sample signature.
+
 ## API routes
 
 - `GET /api/healthz`
 - `GET /api/attestations`
+- `POST /api/rp-signature` (generates RP signature for IDKit connect flow)
+- `POST /api/verify-proof` (forwards raw `idkitResponse` to `/api/v4/verify/{rp_id}`)
 - `POST /api/submit-image`
 
 Example submit:
@@ -55,6 +71,8 @@ curl -sX POST http://127.0.0.1:3000/api/submit-image \
   }' | jq .
 ```
 
+`/api/submit-image` also accepts `idkit_response` (raw IDKit payload) and verifies it as-is on backend.
+
 ## Required env
 
 - `WORLDCOIN_RP_ID` (`rp_...` preferred; `app_...` accepted as legacy-compatible)
@@ -64,6 +82,7 @@ Optional:
 - `WORLDCOIN_API_KEY`
 - `WORLDCOIN_VERIFY_BASE_URL` (default `https://developer.world.org`)
 - `WORLDCOIN_MODE` (`dev` or `build`)
+- `RP_SIGNING_KEY` (required for `/api/rp-signature`)
 
 ## Vercel
 

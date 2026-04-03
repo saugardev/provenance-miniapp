@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { appendSubmission, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
-import { verifyWorldcoinProof } from "../../../lib/worldcoin-verify";
+import { verifyIdKitResponse, verifyWorldcoinProof } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -12,6 +12,7 @@ type SubmitBody = {
   content_id?: string;
   content_hash?: string;
   timestamp_ms?: number;
+  idkit_response?: unknown;
   worldcoin_proof?: {
     action?: string;
     signal?: string;
@@ -27,6 +28,10 @@ function isSha256Hash(v: string): boolean {
   return /^sha256:[0-9a-f]{64}$/i.test(v);
 }
 
+function isAllowedVerificationLevel(level: string): boolean {
+  return level === "orb" || level === "device";
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as SubmitBody;
@@ -35,38 +40,57 @@ export async function POST(req: Request) {
     const content_hash = String(body?.content_hash ?? "").trim();
     const timestamp_ms = Number.isFinite(Number(body?.timestamp_ms)) ? Number(body?.timestamp_ms) : Date.now();
 
-    const proofInput = body?.worldcoin_proof ?? {};
-    const action = String(proofInput?.action ?? "").trim();
-    const signal = content_hash;
-    const proof = String(proofInput?.proof ?? "").trim();
-    const merkle_root = String(proofInput?.merkle_root ?? "").trim();
-    const nullifier_hash = String(proofInput?.nullifier_hash ?? "").trim();
-    const verification_level = String(proofInput?.verification_level ?? "").trim();
-    const version = Number.isFinite(Number(proofInput?.version)) ? Number(proofInput?.version) : undefined;
-
     if (!content_id || !content_hash) {
       return NextResponse.json({ error: "content_id, content_hash are required" }, { status: 400 });
     }
     if (!isSha256Hash(content_hash)) {
       return NextResponse.json({ error: "content_hash must match sha256:<64-hex>" }, { status: 400 });
     }
-    if (!action || !proof || !merkle_root || !nullifier_hash || !verification_level) {
+    const proofInput = body?.worldcoin_proof ?? {};
+    let action = String(proofInput?.action ?? "").trim();
+    const signal = content_hash;
+    let proof = String(proofInput?.proof ?? "").trim();
+    let merkle_root = String(proofInput?.merkle_root ?? "").trim();
+    let nullifier_hash = String(proofInput?.nullifier_hash ?? "").trim();
+    let verification_level = String(proofInput?.verification_level ?? "").trim();
+    let version = Number.isFinite(Number(proofInput?.version)) ? Number(proofInput?.version) : undefined;
+
+    let verification;
+    if (body?.idkit_response) {
+      const idkit = body.idkit_response as any;
+      const resp0 = Array.isArray(idkit?.responses) ? idkit.responses[0] : undefined;
+      action = String(idkit?.action ?? action).trim();
+      proof = String(resp0?.proof ?? proof).trim();
+      merkle_root = String(resp0?.merkle_root ?? merkle_root).trim();
+      nullifier_hash = String(resp0?.nullifier ?? resp0?.nullifier_hash ?? nullifier_hash).trim();
+      verification_level = String(resp0?.identifier ?? verification_level).trim();
+
+      verification = await verifyIdKitResponse(body.idkit_response);
+    } else {
+      if (!action || !proof || !merkle_root || !nullifier_hash || !verification_level) {
+        return NextResponse.json(
+          {
+            error: "worldcoin_proof.action, proof, merkle_root, nullifier_hash, verification_level are required",
+          },
+          { status: 400 },
+        );
+      }
+      verification = await verifyWorldcoinProof({
+        action,
+        signal,
+        proof,
+        merkle_root,
+        nullifier_hash,
+        verification_level,
+      });
+    }
+
+    if (!isAllowedVerificationLevel(verification_level)) {
       return NextResponse.json(
-        {
-          error: "worldcoin_proof.action, proof, merkle_root, nullifier_hash, verification_level are required",
-        },
+        { error: "verification_level must be one of: orb, device" },
         { status: 400 },
       );
     }
-
-    const verification = await verifyWorldcoinProof({
-      action,
-      signal,
-      proof,
-      merkle_root,
-      nullifier_hash,
-      verification_level,
-    });
 
     if (!verification.success) {
       return NextResponse.json(

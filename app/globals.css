@@ -53,6 +53,7 @@ h2 {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid #3a3a3a;
