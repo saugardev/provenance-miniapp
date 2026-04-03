@@ -72,6 +72,10 @@ export default function Page() {
     }
   }, []);
 
+  useEffect(() => {
+    setProof((prev) => ({ ...prev, signal: contentHash }));
+  }, [contentHash]);
+
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0] ?? null;
     setFile(selected);
@@ -104,13 +108,16 @@ export default function Page() {
     setBusyWorldVerify(true);
     setError("");
     try {
+      if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
+        throw new Error("Select an image first so signal is bound to content_hash.");
+      }
       if (!MiniKit.isInstalled()) {
         throw new Error("MiniKit verify API not found. Open this app inside World App Mini App context.");
       }
 
       const out = await MiniKit.commandsAsync.verify({
         action: proof.action.trim(),
-        signal: proof.signal.trim() || undefined,
+        signal: contentHash,
         verification_level: asVerificationLevel(proof.verification_level.trim() || "orb"),
       });
 
@@ -155,7 +162,7 @@ export default function Page() {
         timestamp_ms: Date.now(),
         worldcoin_proof: {
           action: proof.action.trim(),
-          signal: proof.signal.trim() || undefined,
+          signal: contentHash,
           proof: proof.proof.trim(),
           merkle_root: proof.merkle_root.trim(),
           nullifier_hash: proof.nullifier_hash.trim(),
@@ -212,8 +219,8 @@ export default function Page() {
             <input value={proof.action} onChange={(e) => updateProof("action", e.target.value)} />
           </label>
           <label className="field">
-            <span>signal (optional)</span>
-            <input value={proof.signal} onChange={(e) => updateProof("signal", e.target.value)} />
+            <span>signal (bound to image hash)</span>
+            <input value={proof.signal} readOnly />
           </label>
         </div>
 

@@ -9,6 +9,7 @@ Unified Next.js app (UI + API routes) for World ID 4.0 image-hash verification a
 - Mini app can call World MiniKit verify directly.
 - Server route verifies proof against World verify API.
 - Server signs canonical message with Ed25519 and stores payload.
+- World verify `signal` is forced to `content_hash` to bind proof to the image.
 
 ## Canonical Signature Message
 

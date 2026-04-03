@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
     const proofInput = body?.worldcoin_proof ?? {};
     const action = String(proofInput?.action ?? "").trim();
-    const signal = proofInput?.signal ? String(proofInput.signal) : undefined;
+    const signal = content_hash;
     const proof = String(proofInput?.proof ?? "").trim();
     const merkle_root = String(proofInput?.merkle_root ?? "").trim();
     const nullifier_hash = String(proofInput?.nullifier_hash ?? "").trim();
@@ -118,6 +118,16 @@ export async function POST(req: Request) {
       ok: true,
       payload,
       verification_environment: verification.environment,
+      worldcoin_verification_input: {
+        action,
+        signal,
+        proof,
+        merkle_root,
+        nullifier_hash,
+        verification_level,
+        version,
+      },
+      worldcoin_verification_result: verification.detail,
       latest_path: latestPath,
     });
   } catch (err) {
