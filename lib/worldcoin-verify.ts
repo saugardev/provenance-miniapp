@@ -5,6 +5,7 @@ export type VerifyWorldcoinInput = {
   merkle_root: string;
   nullifier_hash: string;
   verification_level: string;
+  nonce?: string;
 };
 
 export type VerifyWorldcoinResult = {
@@ -53,6 +54,7 @@ export async function verifyWorldcoinProof(input: VerifyWorldcoinInput): Promise
           merkle_root: input.merkle_root,
           nullifier: input.nullifier_hash,
           identifier: input.verification_level,
+          nonce: input.nonce,
         },
       ],
     }),

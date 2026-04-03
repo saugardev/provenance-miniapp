@@ -21,6 +21,7 @@ type SubmitBody = {
     nullifier_hash?: string;
     verification_level?: string;
     version?: number;
+    nonce?: string;
   };
 };
 
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
     let nullifier_hash = String(proofInput?.nullifier_hash ?? "").trim();
     let verification_level = String(proofInput?.verification_level ?? "").trim();
     let version = Number.isFinite(Number(proofInput?.version)) ? Number(proofInput?.version) : undefined;
+    let nonce = String(proofInput?.nonce ?? "").trim();
 
     let verification;
     if (body?.idkit_response) {
@@ -64,6 +66,7 @@ export async function POST(req: Request) {
       merkle_root = String(resp0?.merkle_root ?? merkle_root).trim();
       nullifier_hash = String(resp0?.nullifier ?? resp0?.nullifier_hash ?? nullifier_hash).trim();
       verification_level = String(resp0?.identifier ?? verification_level).trim();
+      nonce = String(resp0?.nonce ?? idkit?.nonce ?? nonce).trim();
 
       verification = await verifyIdKitResponse(body.idkit_response);
     } else {
@@ -82,6 +85,7 @@ export async function POST(req: Request) {
         merkle_root,
         nullifier_hash,
         verification_level,
+        nonce,
       });
     }
 
@@ -150,6 +154,7 @@ export async function POST(req: Request) {
         nullifier_hash,
         verification_level,
         version,
+        nonce,
       },
       worldcoin_verification_result: verification.detail,
       latest_path: latestPath,

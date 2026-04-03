@@ -9,6 +9,7 @@ type WorldProofInput = {
   proof: string;
   merkle_root: string;
   nullifier_hash: string;
+  nonce: string;
   verification_level: string;
   version: string;
 };
@@ -44,6 +45,7 @@ function extractIdKitResponse(raw: any, action: string, signal: string, defaultL
           merkle_root: String(raw.merkle_root),
           nullifier: String(raw.nullifier_hash),
           identifier: String(raw.verification_level ?? defaultLevel),
+          nonce: String(raw.nonce ?? ""),
         },
       ],
     };
@@ -74,6 +76,7 @@ export default function Page() {
     proof: "",
     merkle_root: "",
     nullifier_hash: "",
+    nonce: "",
     verification_level: "orb",
     version: "1",
   });
@@ -151,7 +154,9 @@ export default function Page() {
 
       const anyOut = out as any;
       const payload = anyOut?.finalPayload ?? anyOut?.payload ?? anyOut ?? {};
-      const normalizedIdkit = extractIdKitResponse(payload, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb");
+      const normalizedIdkit =
+        extractIdKitResponse(anyOut, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb") ??
+        extractIdKitResponse(payload, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb");
       if (!normalizedIdkit) {
         throw new Error("MiniKit response did not include a valid IDKit payload.");
       }
@@ -162,6 +167,7 @@ export default function Page() {
         proof: String(resp0?.proof ?? payload?.proof ?? ""),
         merkle_root: String(resp0?.merkle_root ?? payload?.merkle_root ?? ""),
         nullifier_hash: String(resp0?.nullifier ?? resp0?.nullifier_hash ?? payload?.nullifier_hash ?? ""),
+        nonce: String(resp0?.nonce ?? normalizedIdkit?.nonce ?? payload?.nonce ?? ""),
         verification_level: String(resp0?.identifier ?? payload?.verification_level ?? proof.verification_level),
         version:
           normalizedIdkit?.protocol_version != null
@@ -207,6 +213,7 @@ export default function Page() {
           proof: proof.proof.trim(),
           merkle_root: proof.merkle_root.trim(),
           nullifier_hash: proof.nullifier_hash.trim(),
+          nonce: proof.nonce.trim() || undefined,
           verification_level: proof.verification_level.trim(),
           version: Number.isFinite(Number(proof.version)) ? Number(proof.version) : undefined,
         },
@@ -280,6 +287,11 @@ export default function Page() {
             <input value={proof.nullifier_hash} onChange={(e) => updateProof("nullifier_hash", e.target.value)} />
           </label>
         </div>
+
+        <label className="field">
+          <span>nonce</span>
+          <input value={proof.nonce} onChange={(e) => updateProof("nonce", e.target.value)} />
+        </label>
 
         <div className="row two">
           <label className="field">
