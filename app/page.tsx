@@ -1,6 +1,6 @@
 "use client";
 
-import { IDKit, type IDKitResult } from "@worldcoin/idkit";
+import { IDKit, orbLegacy, type IDKitResult } from "@worldcoin/idkit";
 import { ChangeEvent, useMemo, useState } from "react";
 
 type SubmitResponse = {
@@ -120,7 +120,7 @@ export default function Page() {
           signature: rpData.sig,
         },
         allow_legacy_proofs: true,
-      }).constraints({ type: "proof_of_human", signal: contentHash });
+      }).preset(orbLegacy({ signal: contentHash }));
 
       // 3. Wait for World App to return proof (postMessage in mini app, QR + polling on web)
       const completion = await request.pollUntilCompletion();
