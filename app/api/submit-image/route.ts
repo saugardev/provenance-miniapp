@@ -33,9 +33,11 @@
  */
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
+import { resolveRuntimeStateDir } from "../../../src/runtime-state-dir.ts";
 import { appendSubmission, hasSubmissionForNullifierAction, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
 import {
@@ -75,6 +77,15 @@ type SubmitBody = {
 export async function POST(req: Request) {
   console.log("[submit-image] request received");
   try {
+    const cookieStore = await cookies();
+    const walletAddress = String(cookieStore.get("miniapp_wallet")?.value ?? "").trim();
+    if (!walletAddress) {
+      return NextResponse.json(
+        { error: "Authentication required. Sign in with wallet before uploading." },
+        { status: 401 },
+      );
+    }
+
     const body = (await req.json()) as SubmitBody;
     const idkitResponse = body?.idkitResponse ?? body?.idkit_response;
 
@@ -197,7 +208,7 @@ export async function POST(req: Request) {
     }
 
     // --- Step 3: Build and sign the Livy provenance payload ---
-    const dataDir = resolve(process.cwd(), "state");
+    const dataDir = resolveRuntimeStateDir();
     const statePath = resolve(dataDir, "backend-state.json");
     const state = loadState(statePath);
 
@@ -249,6 +260,7 @@ export async function POST(req: Request) {
     try {
       const { persistUploadedImage } = await import("../../../src/image-store.ts");
       imageRecordId = await persistUploadedImage({
+        userWalletAddress: walletAddress,
         contentId: content_id,
         contentHash: content_hash,
         action,

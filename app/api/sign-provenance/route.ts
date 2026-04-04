@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
+import { resolveRuntimeStateDir } from "../../../src/runtime-state-dir.ts";
 import { appendSubmission, hasSubmissionForNullifierAction, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
 import {
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Verified IDKit payload is missing nullifier" }, { status: 400 });
     }
 
-    const dataDir = resolve(process.cwd(), "state");
+    const dataDir = resolveRuntimeStateDir();
     const statePath = resolve(dataDir, "backend-state.json");
     const state = loadState(statePath);
 

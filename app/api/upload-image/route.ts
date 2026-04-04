@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { canonicalMessage, sha256Hex, verifyWorldSignature, type WorldcoinFirstEntryPayload } from "../../../src/worldcoin-first-entry.ts";
 import { persistUploadedImage } from "../../../src/image-store.ts";
 
@@ -31,6 +32,15 @@ function isSignedPayload(value: unknown): value is WorldcoinFirstEntryPayload {
 export async function POST(req: Request) {
   console.log("[upload-image] request received");
   try {
+    const cookieStore = await cookies();
+    const walletAddress = String(cookieStore.get("miniapp_wallet")?.value ?? "").trim();
+    if (!walletAddress) {
+      return NextResponse.json(
+        { error: "Authentication required. Sign in with wallet before uploading." },
+        { status: 401 },
+      );
+    }
+
     const body = (await req.json()) as UploadBody;
     const consentToStoreImage = body?.consent_to_store_image !== false;
     const consentScope = String(body?.consent_scope ?? "ethglobal_hackathon").trim() || "ethglobal_hackathon";
@@ -93,6 +103,7 @@ export async function POST(req: Request) {
     }
 
     const imageRecordId = await persistUploadedImage({
+      userWalletAddress: walletAddress,
       contentId: payload.entry.content_id,
       contentHash: payload.entry.content_hash,
       action: payload.worldcoin_proof.action,
@@ -112,6 +123,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       uploaded: true,
+      user_wallet_address: walletAddress,
       image_record_id: imageRecordId,
       payload,
     });

@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 
 type PersistUploadedImageInput = {
+  userWalletAddress: string;
   contentId: string;
   contentHash: string;
   action: string;
@@ -39,6 +40,7 @@ async function ensureSchema(client: Pool): Promise<void> {
     CREATE TABLE IF NOT EXISTS uploaded_images (
       id BIGSERIAL PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      user_wallet_address TEXT,
       content_id TEXT NOT NULL,
       content_hash TEXT NOT NULL,
       action TEXT NOT NULL,
@@ -59,7 +61,13 @@ async function ensureSchema(client: Pool): Promise<void> {
     );
   `);
   await client.query(
+    "ALTER TABLE uploaded_images ADD COLUMN IF NOT EXISTS user_wallet_address TEXT",
+  );
+  await client.query(
     "CREATE INDEX IF NOT EXISTS uploaded_images_nullifier_action_idx ON uploaded_images (nullifier_hash, action)",
+  );
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS uploaded_images_user_wallet_idx ON uploaded_images (user_wallet_address)",
   );
 }
 
@@ -75,6 +83,7 @@ export async function persistUploadedImage(input: PersistUploadedImageInput): Pr
   const insert = await db.query<{ id: string }>(
     `
       INSERT INTO uploaded_images (
+        user_wallet_address,
         content_id,
         content_hash,
         action,
@@ -93,11 +102,12 @@ export async function persistUploadedImage(input: PersistUploadedImageInput): Pr
         consent_scope,
         provenance_payload
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
       )
       RETURNING id
     `,
     [
+      input.userWalletAddress,
       input.contentId,
       input.contentHash,
       input.action,

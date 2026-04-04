@@ -392,7 +392,10 @@ export default function CapturePage() {
       });
       const data = (await resp.json()) as SubmitResponse;
       setResult(data);
-      if (resp.ok && data.payload) setSignedPayload(data.payload);
+      if (resp.ok && data.payload) {
+        setSignedPayload(data.payload);
+        await uploadSignedPayloadToBackend(data.payload, photo);
+      }
       if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
     } catch (err) {
       setError(String(err));
@@ -507,28 +510,21 @@ export default function CapturePage() {
     await signProvenance(verificationPayload, capture);
   }
 
-  async function uploadImage() {
-    if (!capture || !signedPayload) {
-      setError("Prove humanity first.");
-      return;
-    }
-
+  async function uploadSignedPayloadToBackend(payloadForUpload: unknown, photo: CapturePayload) {
     setBusyUpload(true);
-    setError("");
-    setResult(null);
 
     try {
       const resp = await fetch("/api/upload-image", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          signed_payload: signedPayload,
+          signed_payload: payloadForUpload,
           consent_to_store_image: true,
           consent_scope: "ethglobal_hackathon",
-          image_base64: capture.base64,
-          image_mime_type: capture.mimeType,
-          image_file_name: capture.fileName,
-          image_size_bytes: capture.fileSize,
+          image_base64: photo.base64,
+          image_mime_type: photo.mimeType,
+          image_file_name: photo.fileName,
+          image_size_bytes: photo.fileSize,
         }),
       });
       const data = (await resp.json()) as SubmitResponse;
@@ -674,20 +670,18 @@ export default function CapturePage() {
           ) : null}
 
           <div className={styles.actions}>
-            <button className={styles.primary} disabled={!capture || busyVerify || busySign} onClick={proveHumanity}>
-              {busyVerify ? "Verifying..." : busySign ? "Proving..." : "Prove humanity"}
+            <button className={styles.primary} disabled={!capture || busyVerify || busySign || busyUpload} onClick={proveHumanity}>
+              {busyVerify ? "Verifying..." : busySign ? "Proving..." : busyUpload ? "Submitting..." : "Prove humanity"}
             </button>
           </div>
 
           {verifyStatus ? <p className={styles.caption}>{verifyStatus}</p> : null}
           <p className={styles.caption}>Signature: {signedPayload ? "Created" : "Not created"}</p>
+          <p className={styles.caption}>Backend: {busyUpload ? "Submitting..." : result?.uploaded ? "Uploaded" : "Not uploaded"}</p>
 
           <div className={styles.actions}>
             <button className={styles.primary} disabled={!signedPayload || busyOg} onClick={publishToOg}>
               {busyOg ? "Submitting..." : "Submit to 0G"}
-            </button>
-            <button className={styles.primary} disabled={!signedPayload || busyUpload} onClick={uploadImage}>
-              {busyUpload ? "Submitting..." : "Submit to backend"}
             </button>
           </div>
 
