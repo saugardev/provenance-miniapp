@@ -19,6 +19,8 @@ type SubmitResponse = {
   payload?: unknown;
   verification_environment?: string;
   image_record_id?: number;
+  signed?: boolean;
+  uploaded?: boolean;
   error?: string;
   detail?: unknown;
 };
@@ -119,9 +121,11 @@ export default function Page() {
   const [rpContext, setRpContext] = useState<RpContext | null>(null);
   const verifySucceededRef = useRef(false);
 
-  // submit state
-  const [busySubmit, setBusySubmit] = useState(false);
-  const [submitResult, setSubmitResult] = useState<SubmitResponse | null>(null);
+  // sign/upload state
+  const [busySign, setBusySign] = useState(false);
+  const [busyUpload, setBusyUpload] = useState(false);
+  const [actionResult, setActionResult] = useState<SubmitResponse | null>(null);
+  const [signedPayload, setSignedPayload] = useState<unknown>(null);
   const [denyStorageConsent, setDenyStorageConsent] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<GpsLocation | null>(null);
   const [busyGps, setBusyGps] = useState(false);
@@ -154,7 +158,8 @@ export default function Page() {
     const selected = e.target.files?.[0] ?? null;
     setFile(selected);
     setError("");
-    setSubmitResult(null);
+    setActionResult(null);
+    setSignedPayload(null);
     setVerificationPayload(null);
     setVerifiedByBackend(false);
     setContentHash("");
@@ -188,6 +193,8 @@ export default function Page() {
     setError("");
     setVerificationPayload(null);
     setVerifiedByBackend(false);
+    setActionResult(null);
+    setSignedPayload(null);
     setWidgetOpen(false);
     setRpContext(null);
     verifySucceededRef.current = false;
@@ -307,41 +314,27 @@ export default function Page() {
       setError("Complete World ID verification first.");
       return;
     }
-    if (denyStorageConsent) {
-      setError("You opted out of storage for the hackathon purposes, so submission is won't be public.");
-      return;
-    }
     if (!contentId.trim()) {
       setError("content_id is required.");
       return;
     }
-    if (!file || !fileBase64) {
-      setError("Select an image first.");
-      return;
-    }
     if (!gpsLocation) {
-      setError("GPS location is required before upload.");
+      setError("GPS location is required before signing.");
       return;
     }
 
-    setBusySubmit(true);
+    setBusySign(true);
     setError("");
-    setSubmitResult(null);
+    setActionResult(null);
 
     try {
-      const resp = await fetch("/api/submit-image", {
+      const resp = await fetch("/api/sign-provenance", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           content_id: contentId.trim(),
           content_hash: contentHash,
           timestamp_ms: Date.now(),
-          consent_to_store_image: !denyStorageConsent,
-          consent_scope: "ethglobal_hackathon",
-          image_base64: fileBase64,
-          image_mime_type: file.type || "application/octet-stream",
-          image_file_name: file.name,
-          image_size_bytes: file.size,
           gps_location: gpsLocation,
           ...(verificationPayload.kind === "idkit"
             ? { idkitResponse: verificationPayload.idkitResponse }
@@ -349,12 +342,57 @@ export default function Page() {
         }),
       });
       const data = (await resp.json()) as SubmitResponse;
-      setSubmitResult(data);
+      setActionResult(data);
+      if (resp.ok && data?.payload) {
+        setSignedPayload(data.payload);
+      }
       if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
     } catch (err) {
       setError(String(err));
     } finally {
-      setBusySubmit(false);
+      setBusySign(false);
+    }
+  }
+
+  async function upload() {
+    if (!signedPayload) {
+      setError("Sign provenance first.");
+      return;
+    }
+    if (denyStorageConsent) {
+      setError("Storage consent is denied, so upload is disabled.");
+      return;
+    }
+    if (!file || !fileBase64) {
+      setError("Select an image first.");
+      return;
+    }
+
+    setBusyUpload(true);
+    setError("");
+    setActionResult(null);
+
+    try {
+      const resp = await fetch("/api/upload-image", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          signed_payload: signedPayload,
+          consent_to_store_image: !denyStorageConsent,
+          consent_scope: "ethglobal_hackathon",
+          image_base64: fileBase64,
+          image_mime_type: file.type || "application/octet-stream",
+          image_file_name: file.name,
+          image_size_bytes: file.size,
+        }),
+      });
+      const data = (await resp.json()) as SubmitResponse;
+      setActionResult(data);
+      if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusyUpload(false);
     }
   }
 
@@ -390,7 +428,7 @@ export default function Page() {
       <section className="card">
         <h1>Livy World Mini App</h1>
         <p className="muted">
-          Hash an image, bind it to a World ID proof, then upload image + provenance.
+          Hash an image, verify with World ID, sign provenance, then optionally upload the image.
         </p>
 
         {/* Image */}
@@ -518,7 +556,7 @@ export default function Page() {
               onChange={(e) => {
                 setDenyStorageConsent(e.target.checked);
                 if (e.target.checked) {
-                  setSubmitResult(null);
+                  setActionResult(null);
                 }
               }}
             />
@@ -526,7 +564,7 @@ export default function Page() {
           </label>
         ) : null}
         {verifiedByBackend && denyStorageConsent ? (
-          <p className="hint">Storage consent is denied, so Upload is disabled.</p>
+          <p className="hint">Storage consent is denied, so image upload is disabled.</p>
         ) : null}
 
         {verifiedByBackend ? (
@@ -542,22 +580,32 @@ export default function Page() {
           </>
         ) : null}
 
-        {/* Upload */}
-        <button
-          className="button"
-          disabled={busySubmit || !verifiedByBackend || denyStorageConsent || !gpsLocation}
-          onClick={submit}
-        >
-          {busySubmit ? "Uploading..." : "Upload"}
-        </button>
+        {/* Sign + upload */}
+        <div className="row two">
+          <button
+            className="button"
+            disabled={busySign || busyUpload || !verifiedByBackend || !gpsLocation}
+            onClick={submit}
+          >
+            {busySign ? "Proving..." : "Prove humanity"}
+          </button>
+          <button
+            className="button"
+            disabled={busySign || busyUpload || !signedPayload || denyStorageConsent}
+            onClick={upload}
+          >
+            {busyUpload ? "Uploading..." : "Upload image"}
+          </button>
+        </div>
+        <p className="hint">Signature: {signedPayload ? "✅ created" : "not created yet"}</p>
 
         {file ? <p className="hint">File: {file.name}</p> : null}
         {error ? <p className="error">{error}</p> : null}
 
-        {submitResult ? (
+        {actionResult ? (
           <div className="result">
             <h2>Result</h2>
-            <pre>{JSON.stringify(submitResult, null, 2)}</pre>
+            <pre>{JSON.stringify(actionResult, null, 2)}</pre>
           </div>
         ) : null}
 
