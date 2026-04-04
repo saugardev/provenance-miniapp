@@ -2,7 +2,7 @@
 
 import { IDKitErrorCodes, IDKitRequestWidget, orbLegacy, type IDKitResult, type RpContext } from "@worldcoin/idkit";
 import { MiniKit, VerificationLevel, type MiniAppVerifyActionPayload } from "@worldcoin/minikit-js";
-import { Bebas_Neue, Manrope } from "next/font/google";
+import { Manrope } from "next/font/google";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
@@ -58,7 +58,6 @@ type CapturePayload = {
   capturedAtLabel: string;
 };
 
-const bebasNeue = Bebas_Neue({ weight: "400", subsets: ["latin"], display: "swap" });
 const manrope = Manrope({ weight: ["400", "500", "700"], subsets: ["latin"], display: "swap" });
 
 const IDKIT_ERROR_MESSAGES: Record<string, string> = {
@@ -262,6 +261,26 @@ export default function CapturePage() {
     }
   }
 
+  async function captureFromBlob(blob: Blob, gps: GpsLocation) {
+    const hash = await sha256Hex(blob);
+    const contentHash = `sha256:${hash}`;
+    const base64 = arrayBufferToBase64(await blob.arrayBuffer());
+    const fileName = `capture-${new Date(gps.captured_at_ms).toISOString().replace(/[:.]/g, "-")}.jpg`;
+
+    if (capture?.previewUrl) URL.revokeObjectURL(capture.previewUrl);
+    setCapture({
+      previewUrl: URL.createObjectURL(blob),
+      base64,
+      contentHash,
+      mimeType: blob.type || "image/jpeg",
+      fileName,
+      fileSize: blob.size,
+      capturedAtLabel: new Date(gps.captured_at_ms).toLocaleTimeString(),
+      gps,
+    });
+    setDrawerOpen(true);
+  }
+
   async function capturePhotoNow() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -296,34 +315,26 @@ export default function CapturePage() {
         }, "image/jpeg", 0.92);
       });
 
-      const hash = await sha256Hex(blob);
-      const contentHash = `sha256:${hash}`;
-      const base64 = arrayBufferToBase64(await blob.arrayBuffer());
       const capturedAtMs = Math.round(position.timestamp || Date.now());
-      const fileName = `capture-${new Date(capturedAtMs).toISOString().replace(/[:.]/g, "-")}.jpg`;
-
-      if (capture?.previewUrl) URL.revokeObjectURL(capture.previewUrl);
-      setCapture({
-        previewUrl: URL.createObjectURL(blob),
-        base64,
-        contentHash,
-        mimeType: "image/jpeg",
-        fileName,
-        fileSize: blob.size,
-        capturedAtLabel: new Date(capturedAtMs).toLocaleTimeString(),
-        gps: {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy_meters: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : undefined,
-          captured_at_ms: capturedAtMs,
-        },
+      await captureFromBlob(blob, {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy_meters: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : undefined,
+        captured_at_ms: capturedAtMs,
       });
-      setDrawerOpen(true);
     } catch (err) {
       setError(`Capture failed: ${String(err)}`);
     } finally {
       setBusyCapture(false);
     }
+  }
+
+  async function quickPhoto() {
+    if (!cameraReady) {
+      await openCameraWithPermissionCheck();
+      return;
+    }
+    await capturePhotoNow();
   }
 
   async function verifyHumanity() {
@@ -492,12 +503,6 @@ export default function CapturePage() {
   return (
     <main className={`${styles.page} ${manrope.className}`}>
       <canvas ref={canvasRef} className={styles.hidden} />
-      <div className={styles.headerRow}>
-        <h1 className={`${styles.title} ${bebasNeue.className}`}>Capture truth</h1>
-        <Link className={styles.techLink} href="/verify">Technical mode</Link>
-      </div>
-
-      <p className={styles.subtitle}>Use your camera to capture a real moment, prove humanity, then choose to upload.</p>
 
       <section className={styles.cameraPanel}>
         <video ref={videoRef} playsInline muted autoPlay className={`${styles.video} ${cameraReady ? "" : styles.hidden}`} />
@@ -505,7 +510,25 @@ export default function CapturePage() {
           <div className={styles.placeholder}>Camera is off</div>
         ) : null}
         {capture ? <img src={capture.previewUrl} alt="Captured" className={styles.video} /> : null}
+        <div className={styles.cameraOverlay} />
       </section>
+
+      <div className={styles.floatingCaptureControls}>
+        {cameraReady ? (
+          <button
+            className={styles.shutterButton}
+            aria-label={busyCapture ? "Capturing photo" : "Take photo"}
+            disabled={busyCapture}
+            onClick={quickPhoto}
+          >
+            <span className={styles.shutterInner} />
+          </button>
+        ) : (
+          <button className={styles.quickButton} disabled={busyCamera || busyCapture} onClick={quickPhoto}>
+            {busyCamera ? "Enabling..." : "Enable camera"}
+          </button>
+        )}
+      </div>
 
       <div className={styles.scrollPad} />
 
@@ -556,15 +579,7 @@ export default function CapturePage() {
                 />
               </svg>
             </button>
-          </div>
-
-          <div className={styles.actions}>
-            <button className={styles.secondary} disabled={busyCamera || busyCapture} onClick={openCameraWithPermissionCheck}>
-              {busyCamera ? "Enabling..." : cameraReady ? "Re-open camera" : "Enable camera"}
-            </button>
-            <button className={styles.primary} disabled={!cameraReady || busyCapture} onClick={capturePhotoNow}>
-              {busyCapture ? "Capturing..." : "Capture image"}
-            </button>
+            <Link className={styles.techLink} href="/verify">Technical mode</Link>
           </div>
 
           {capture ? (
@@ -592,7 +607,7 @@ export default function CapturePage() {
               checked={denyStorageConsent}
               onChange={(e) => setDenyStorageConsent(e.target.checked)}
             />
-            <span>I do not consent to storing this image for ETHGlobal purposes.</span>
+            <span>I do not consent to storing this image for the hackathon purposes.</span>
           </label>
 
           <div className={styles.actions}>

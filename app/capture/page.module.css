@@ -1,11 +1,12 @@
 .page {
-  min-height: 120dvh;
+  min-height: 140dvh;
   background:
     radial-gradient(1200px 540px at 100% -10%, rgba(212, 188, 146, 0.18) 0%, rgba(12, 12, 12, 0) 58%),
     radial-gradient(900px 500px at -10% 20%, rgba(151, 168, 192, 0.14) 0%, rgba(10, 10, 10, 0) 55%),
     #0e0f10;
   color: #f5f3ef;
-  padding: 22px 18px 28px;
+  padding: 0;
+  overflow-x: hidden;
 }
 
 .hidden {
@@ -59,30 +60,99 @@
 }
 
 .cameraPanel {
-  position: relative;
-  border-radius: 20px;
+  position: fixed;
+  inset: 0;
+  z-index: 1;
   overflow: hidden;
-  border: 1px solid rgba(236, 230, 219, 0.2);
   background: #1a1b1e;
-  min-height: 46vh;
 }
 
 .video {
   width: 100%;
   height: 100%;
-  min-height: 46vh;
   object-fit: cover;
   display: block;
 }
 
 .placeholder {
-  min-height: 46vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   color: rgba(245, 243, 239, 0.5);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: 12px;
+}
+
+.cameraOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to top, rgba(8, 8, 8, 0.48) 0%, rgba(8, 8, 8, 0.08) 36%, rgba(8, 8, 8, 0.22) 100%),
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, rgba(0, 0, 0, 0.24) 72%);
+}
+
+.floatingCaptureControls {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 102px;
+  z-index: 29;
+  height: 84px;
+  width: min(540px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.quickButton {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.quickButton {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(246, 243, 238, 0.94);
+  color: #111;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.quickButton:disabled {
+  opacity: 0.5;
+}
+
+.shutterButton {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 74px;
+  height: 74px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.12);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.shutterInner {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.shutterButton:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .actions {
@@ -93,7 +163,7 @@
 }
 
 .scrollPad {
-  height: 120px;
+  height: 220px;
 }
 
 .primary,
@@ -222,7 +292,8 @@
 
 .drawerTopActions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   padding-top: 2px;
 }
 
@@ -337,7 +408,7 @@
   .page {
     max-width: 960px;
     margin: 0 auto;
-    padding-top: 28px;
+    padding-top: 0;
   }
 
   .actions {
@@ -348,6 +419,11 @@
     left: 50%;
     right: auto;
     transform: translate(-50%, calc(100% - 86px));
+  }
+
+  .floatingCaptureControls {
+    left: 50%;
+    width: min(620px, calc(100% - 32px));
   }
 
   .drawerOpen {

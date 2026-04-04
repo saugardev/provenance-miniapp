@@ -560,7 +560,7 @@ export default function Page() {
                 }
               }}
             />
-            <span>I do not give consent to store this picture in a database for ETHGlobal purposes.</span>
+            <span>I do not give consent to store this picture in a database for the hackathon purposes.</span>
           </label>
         ) : null}
         {verifiedByBackend && denyStorageConsent ? (

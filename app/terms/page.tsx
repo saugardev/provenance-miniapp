@@ -32,7 +32,7 @@ export default function TermsPage() {
           <li>process it to verify human-authenticity signals,</li>
           <li>use it for hackathon judging, product testing, debugging, and demo presentation.</li>
         </ul>
-
+i 
         <h2>3. What You Confirm</h2>
         <p className="hint">You confirm that:</p>
         <ul className="hint">
