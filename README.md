@@ -92,6 +92,7 @@ Optional:
 - `OG_STORAGE_PRIVATE_KEY` (enables 0G upload on `/api/sign-provenance`)
 - `OG_STORAGE_EVM_RPC` (default `https://evmrpc-testnet.0g.ai`)
 - `OG_STORAGE_INDEXER_RPC` (default `https://indexer-storage-testnet-turbo.0g.ai`)
+- `NEXT_PUBLIC_WORLDCOIN_APP_ID` (used by homepage MiniKit Wallet Auth one-time sign-in)
 
 ## Vercel
 

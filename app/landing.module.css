@@ -136,6 +136,11 @@
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
+.heroCta:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .heroCta:hover {
   opacity: 0.92;
 }
@@ -158,6 +163,40 @@
   line-height: 1.5;
   animation: fadeUp 0.7s ease both;
   animation-delay: 0.56s;
+}
+
+.heroSessionRow {
+  margin: 10px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  animation: fadeUp 0.7s ease both;
+  animation-delay: 0.52s;
+}
+
+.heroSessionText {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 12px;
+}
+
+.heroSessionButton {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.heroAuthError {
+  margin: 10px 0 0;
+  color: #ffb3b3;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .heroTerms a {
