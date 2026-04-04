@@ -134,7 +134,6 @@ export default function Page() {
   const [actionResult, setActionResult] = useState<SubmitResponse | null>(null);
   const [apiFailure, setApiFailure] = useState<ApiFailure | null>(null);
   const [signedPayload, setSignedPayload] = useState<unknown>(null);
-  const [denyStorageConsent, setDenyStorageConsent] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<GpsLocation | null>(null);
   const [busyGps, setBusyGps] = useState(false);
 
@@ -175,7 +174,6 @@ export default function Page() {
     setWidgetOpen(false);
     setRpContext(null);
     verifySucceededRef.current = false;
-    setDenyStorageConsent(false);
     setFileBase64("");
     setGpsLocation(null);
     if (!selected) return;
@@ -206,7 +204,6 @@ export default function Page() {
     setWidgetOpen(false);
     setRpContext(null);
     verifySucceededRef.current = false;
-    setDenyStorageConsent(false);
     setGpsLocation(null);
 
     try {
@@ -380,10 +377,6 @@ export default function Page() {
       setError("Sign provenance first.");
       return;
     }
-    if (denyStorageConsent) {
-      setError("Storage consent is denied, so upload is disabled.");
-      return;
-    }
     if (!file || !fileBase64) {
       setError("Select an image first.");
       return;
@@ -400,7 +393,7 @@ export default function Page() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           signed_payload: signedPayload,
-          consent_to_store_image: !denyStorageConsent,
+          consent_to_store_image: true,
           consent_scope: "ethglobal_hackathon",
           image_base64: fileBase64,
           image_mime_type: file.type || "application/octet-stream",
@@ -583,25 +576,6 @@ export default function Page() {
         <p className="hint">Backend verify: {verifiedByBackend ? "✅ success" : "pending"}</p>
 
         {verifiedByBackend ? (
-          <label className="consent-toggle">
-            <input
-              type="checkbox"
-              checked={denyStorageConsent}
-              onChange={(e) => {
-                setDenyStorageConsent(e.target.checked);
-                if (e.target.checked) {
-                  setActionResult(null);
-                }
-              }}
-            />
-            <span>I do not give consent to store this picture in a database for the hackathon purposes.</span>
-          </label>
-        ) : null}
-        {verifiedByBackend && denyStorageConsent ? (
-          <p className="hint">Storage consent is denied, so image upload is disabled.</p>
-        ) : null}
-
-        {verifiedByBackend ? (
           <>
             <button className="button secondary" type="button" onClick={captureGpsLocation} disabled={busyGps}>
               {busyGps ? "Capturing GPS..." : gpsLocation ? "Refresh GPS location" : "Capture GPS location"}
@@ -625,7 +599,7 @@ export default function Page() {
           </button>
           <button
             className="button"
-            disabled={busySign || busyUpload || !signedPayload || denyStorageConsent}
+            disabled={busySign || busyUpload || !signedPayload}
             onClick={upload}
           >
             {busyUpload ? "Uploading..." : "Upload image"}

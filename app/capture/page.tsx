@@ -143,7 +143,6 @@ export default function CapturePage() {
   const [busyUpload, setBusyUpload] = useState(false);
   const [signedPayload, setSignedPayload] = useState<unknown>(null);
   const [result, setResult] = useState<SubmitResponse | null>(null);
-  const [denyStorageConsent, setDenyStorageConsent] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerDragOffset, setDrawerDragOffset] = useState<number | null>(null);
   const [overshootMaskHeight, setOvershootMaskHeight] = useState(0);
@@ -480,10 +479,6 @@ export default function CapturePage() {
       setError("Prove humanity first.");
       return;
     }
-    if (denyStorageConsent) {
-      setError("Storage consent denied. Upload blocked.");
-      return;
-    }
 
     setBusyUpload(true);
     setError("");
@@ -610,17 +605,8 @@ export default function CapturePage() {
           {verifyStatus ? <p className={styles.caption}>{verifyStatus}</p> : null}
           <p className={styles.caption}>Signature: {signedPayload ? "Created" : "Not created"}</p>
 
-          <label className={styles.consent}>
-            <input
-              type="checkbox"
-              checked={denyStorageConsent}
-              onChange={(e) => setDenyStorageConsent(e.target.checked)}
-            />
-            <span>I do not consent to storing this image for the hackathon purposes.</span>
-          </label>
-
           <div className={styles.actions}>
-            <button className={styles.primary} disabled={!signedPayload || denyStorageConsent || busyUpload} onClick={uploadImage}>
+            <button className={styles.primary} disabled={!signedPayload || busyUpload} onClick={uploadImage}>
               {busyUpload ? "Uploading..." : "Upload"}
             </button>
           </div>

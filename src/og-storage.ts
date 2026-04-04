@@ -1,6 +1,7 @@
 import { Indexer, ZgFile } from "@0gfoundation/0g-ts-sdk";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { JsonRpcProvider, Wallet } from "ethers";
 import type { WorldcoinFirstEntryPayload } from "./worldcoin-first-entry.ts";
@@ -69,7 +70,7 @@ export async function publishPayloadTo0g(input: {
   const jsonBytes = Buffer.from(JSON.stringify(record), "utf8");
   const payloadSha256 = createHash("sha256").update(jsonBytes).digest("hex");
 
-  const tmpDir = resolve(process.cwd(), "state", "og-tmp");
+  const tmpDir = resolve(tmpdir(), "og-tmp");
   mkdirSync(tmpDir, { recursive: true });
   const tmpPath = resolve(tmpDir, `proof-${randomUUID()}.json`);
   writeFileSync(tmpPath, jsonBytes);
@@ -110,6 +111,10 @@ export async function publishPayloadTo0g(input: {
     if (file) {
       await file.close().catch(() => undefined);
     }
-    unlinkSync(tmpPath);
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // Ignore cleanup errors.
+    }
   }
 }
