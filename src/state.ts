@@ -36,24 +36,31 @@ export function appendSubmission(state: BackendState, payload: WorldcoinFirstEnt
 }
 
 /**
- * Returns true when a submission already exists for the same (nullifier, action).
- * World ID nullifiers are unique per (user, action), so reusing the same pair
- * should be rejected to prevent replay.
+ * Returns true when a submission already exists for the same
+ * (nullifier, action, content_hash) tuple.
+ *
+ * Nullifiers are stable per (user, action), so users can legitimately submit
+ * multiple different images for the same action. We only block exact replay of
+ * the same content hash under the same identity/action.
  */
-export function hasSubmissionForNullifierAction(
+export function hasSubmissionForNullifierActionContent(
   state: BackendState,
   nullifierHash: string,
   action: string,
+  contentHash: string,
 ): boolean {
   const normalizedNullifier = String(nullifierHash ?? "").trim();
   const normalizedAction = String(action ?? "").trim();
-  if (!normalizedNullifier || !normalizedAction) return false;
+  const normalizedContentHash = String(contentHash ?? "").trim();
+  if (!normalizedNullifier || !normalizedAction || !normalizedContentHash) return false;
 
   return state.submissions.some((submission) => {
     const proof = submission?.payload?.worldcoin_proof;
+    const entry = submission?.payload?.entry;
     return (
       String(proof?.nullifier_hash ?? "").trim() === normalizedNullifier
       && String(proof?.action ?? "").trim() === normalizedAction
+      && String(entry?.content_hash ?? "").trim() === normalizedContentHash
     );
   });
 }

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { resolveRuntimeStateDir } from "../../../src/runtime-state-dir.ts";
-import { appendSubmission, hasSubmissionForNullifierAction, loadState, saveState } from "../../../src/state.ts";
+import { appendSubmission, hasSubmissionForNullifierActionContent, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
 import {
   verifyIdKitResponse,
@@ -111,9 +111,9 @@ export async function POST(req: Request) {
     const statePath = resolve(dataDir, "backend-state.json");
     const state = loadState(statePath);
 
-    if (hasSubmissionForNullifierAction(state, nullifier, action)) {
+    if (hasSubmissionForNullifierActionContent(state, nullifier, action, content_hash)) {
       return NextResponse.json(
-        { error: "This World ID has already submitted for this action (duplicate nullifier)." },
+        { error: "This exact image has already been submitted for this action by this World ID." },
         { status: 409 },
       );
     }

@@ -38,7 +38,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { resolveRuntimeStateDir } from "../../../src/runtime-state-dir.ts";
-import { appendSubmission, hasSubmissionForNullifierAction, loadState, saveState } from "../../../src/state.ts";
+import { appendSubmission, hasSubmissionForNullifierActionContent, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
 import {
   verifyIdKitResponse,
@@ -212,12 +212,12 @@ export async function POST(req: Request) {
     const statePath = resolve(dataDir, "backend-state.json");
     const state = loadState(statePath);
 
-    // Replay protection (World docs Step 6):
-    // reject if this (nullifier, action) pair has already been submitted.
-    if (hasSubmissionForNullifierAction(state, nullifier, action)) {
-      console.warn(`[submit-image] duplicate nullifier replay blocked nullifier="${nullifier}" action="${action}"`);
+    // Replay protection:
+    // reject exact replay of the same (nullifier, action, content_hash).
+    if (hasSubmissionForNullifierActionContent(state, nullifier, action, content_hash)) {
+      console.warn(`[submit-image] duplicate replay blocked nullifier="${nullifier}" action="${action}" content_hash="${content_hash}"`);
       return NextResponse.json(
-        { error: "This World ID has already submitted for this action (duplicate nullifier)." },
+        { error: "This exact image has already been submitted for this action by this World ID." },
         { status: 409 },
       );
     }
