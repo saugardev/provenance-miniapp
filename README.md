@@ -14,7 +14,10 @@ Unified Next.js app (UI + API routes) for World ID v3 orbLegacy image-hash verif
 
 ## Canonical Signature Message
 
-`livy-worldcoin-v1|content_hash|nullifier_hash|action|signal|timestamp_ms|content_id`
+`livy-worldcoin-v2|content_hash|nullifier_hash|action|signal|gps_latitude|gps_longitude|gps_captured_at_ms|timestamp_ms|content_id`
+
+Detailed recompute/verification guide:
+- [`docs/proof-recompute.md`](docs/proof-recompute.md)
 
 ## Run (local)
 
@@ -83,6 +86,7 @@ Optional:
 - `WORLDCOIN_VERIFY_BASE_URL` (default `https://developer.world.org`)
 - `WORLDCOIN_MODE` (`dev` or `build`)
 - `RP_SIGNING_KEY` (required for `/api/rp-signature`)
+- `DATABASE_URL` (required for image + provenance DB persistence)
 
 ## Vercel
 

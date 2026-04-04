@@ -63,6 +63,11 @@ textarea {
   color: #fff;
 }
 
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+}
+
 textarea {
   resize: vertical;
 }
@@ -162,6 +167,20 @@ pre {
 
 .error {
   color: #ff6f6f;
+}
+
+.consent-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 16px;
+  color: #d7d7d7;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.consent-toggle input[type="checkbox"] {
+  margin-top: 2px;
 }
 
 @media (max-width: 800px) {

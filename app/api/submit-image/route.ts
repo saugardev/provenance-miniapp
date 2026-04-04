@@ -18,6 +18,16 @@
  *     content_id:    string           — stable identifier for the piece of content
  *     content_hash:  "sha256:<hex>"   — SHA-256 of the image (bound to the proof signal)
  *     timestamp_ms?: number           — defaults to Date.now()
+ *     image_base64:  string           — base64 encoded image bytes
+ *     image_mime_type?: string        — image mime type
+ *     image_file_name?: string        — original file name
+ *     image_size_bytes?: number       — original file size
+ *     gps_location: {
+ *       latitude: number,
+ *       longitude: number,
+ *       accuracy_meters?: number,
+ *       captured_at_ms?: number
+ *     }
  *     idkitResponse: IDKitResult      — raw result from World App
  *   }
  */
@@ -43,6 +53,18 @@ type SubmitBody = {
   content_id?: string;
   content_hash?: string;
   timestamp_ms?: number;
+  consent_to_store_image?: boolean;
+  consent_scope?: string;
+  image_base64?: string;
+  image_mime_type?: string;
+  image_file_name?: string;
+  image_size_bytes?: number;
+  gps_location?: {
+    latitude?: number;
+    longitude?: number;
+    accuracy_meters?: number;
+    captured_at_ms?: number;
+  };
   idkitResponse?: unknown;
   idkit_response?: unknown;
   proof?: unknown;
@@ -59,6 +81,20 @@ export async function POST(req: Request) {
     const content_id = String(body?.content_id ?? "").trim();
     const content_hash = String(body?.content_hash ?? "").trim();
     const timestamp_ms = Number.isFinite(Number(body?.timestamp_ms)) ? Number(body.timestamp_ms) : Date.now();
+    const consentToStoreImage = body?.consent_to_store_image !== false;
+    const consentScope = String(body?.consent_scope ?? "").trim();
+    const imageBase64 = String(body?.image_base64 ?? "").trim();
+    const imageMimeType = String(body?.image_mime_type ?? "").trim() || "application/octet-stream";
+    const imageFileName = String(body?.image_file_name ?? "").trim() || null;
+    const imageSizeBytes = Number.isFinite(Number(body?.image_size_bytes)) ? Number(body?.image_size_bytes) : 0;
+    const gpsLatitude = Number(body?.gps_location?.latitude);
+    const gpsLongitude = Number(body?.gps_location?.longitude);
+    const gpsAccuracyMeters = Number.isFinite(Number(body?.gps_location?.accuracy_meters))
+      ? Number(body?.gps_location?.accuracy_meters)
+      : undefined;
+    const gpsCapturedAtMs = Number.isFinite(Number(body?.gps_location?.captured_at_ms))
+      ? Number(body?.gps_location?.captured_at_ms)
+      : undefined;
 
     if (!content_id || !content_hash) {
       console.warn("[submit-image] missing content_id or content_hash");
@@ -72,6 +108,22 @@ export async function POST(req: Request) {
     if (!idkitResponse && !isMiniAppProof(miniAppProof)) {
       console.warn("[submit-image] missing idkitResponse/proof");
       return NextResponse.json({ error: "idkitResponse or proof is required" }, { status: 400 });
+    }
+    if (!consentToStoreImage) {
+      console.warn("[submit-image] upload blocked due to denied storage consent");
+      return NextResponse.json({ error: "Storage consent was denied by the user." }, { status: 403 });
+    }
+    if (!imageBase64) {
+      console.warn("[submit-image] missing image_base64");
+      return NextResponse.json({ error: "image_base64 is required for upload" }, { status: 400 });
+    }
+    if (!imageSizeBytes || imageSizeBytes <= 0) {
+      console.warn("[submit-image] invalid image_size_bytes");
+      return NextResponse.json({ error: "image_size_bytes must be greater than 0" }, { status: 400 });
+    }
+    if (!Number.isFinite(gpsLatitude) || !Number.isFinite(gpsLongitude)) {
+      console.warn("[submit-image] missing gps_location coordinates");
+      return NextResponse.json({ error: "gps_location.latitude and gps_location.longitude are required" }, { status: 400 });
     }
 
     console.log(`[submit-image] content_id="${content_id}" content_hash="${content_hash}" timestamp_ms=${timestamp_ms}`);
@@ -170,6 +222,12 @@ export async function POST(req: Request) {
       verification_level: verificationLevel,
       action,
       signal: content_hash, // signal was bound to the content hash in IDKit.request()
+      gps_location: {
+        latitude: gpsLatitude,
+        longitude: gpsLongitude,
+        accuracy_meters: gpsAccuracyMeters,
+        captured_at_ms: gpsCapturedAtMs ?? timestamp_ms,
+      },
     };
 
     const mode = (process.env.WORLDCOIN_MODE?.toLowerCase() === "build" ? "build" : "dev") as "dev" | "build";
@@ -185,8 +243,34 @@ export async function POST(req: Request) {
 
     console.log(`[submit-image] ✓ payload built and persisted signature="${payload.signature.slice(0, 16)}..."`);
 
+    let imageRecordId: number | null = null;
+    try {
+      const { persistUploadedImage } = await import("../../../src/image-store.ts");
+      imageRecordId = await persistUploadedImage({
+        contentId: content_id,
+        contentHash: content_hash,
+        action,
+        nullifierHash: nullifier,
+        verificationLevel,
+        merkleRoot,
+        imageBase64,
+        imageMimeType,
+        imageFileName,
+        imageSizeBytes,
+        gpsLocation: worldcoinProof.gps_location,
+        consentToStoreImage,
+        consentScope: consentScope || "ethglobal_hackathon",
+        provenancePayload: payload,
+      });
+      console.log(`[submit-image] ✓ image persisted to db record_id=${imageRecordId}`);
+    } catch (dbErr) {
+      console.error("[submit-image] failed to persist image to db:", dbErr);
+      return NextResponse.json({ error: "Failed to store image in database", detail: String(dbErr) }, { status: 500 });
+    }
+
     return NextResponse.json({
       ok: true,
+      image_record_id: imageRecordId,
       bypassed: verificationBypassed,
       bypass_reason: verificationBypassed ? "invalid_action" : undefined,
       session_id: verification.session_id,

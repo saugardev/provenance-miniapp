@@ -67,7 +67,8 @@ export default function HomePage() {
             Prove humanity
           </Link>
           <p className={styles.heroTerms}>
-            By pressing &ldquo;Prove humanity&rdquo; you accept our Terms and Conditions.
+            By pressing &ldquo;Prove humanity&rdquo; you accept our{" "}
+            <Link href="/terms">Terms and Conditions</Link>.
           </p>
         </div>
       </div>

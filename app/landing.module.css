@@ -143,6 +143,12 @@
   animation-delay: 0.56s;
 }
 
+.heroTerms a {
+  color: rgba(255, 255, 255, 0.62);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 @media (max-width: 480px) {
   .hero {
     padding: 0 18px 32px;

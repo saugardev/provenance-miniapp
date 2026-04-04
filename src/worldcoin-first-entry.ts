@@ -48,6 +48,12 @@ export type WorldcoinProof = {
   action: string;
   /** The IDKit signal — bound to content_hash so proof is tied to this content. */
   signal?: string;
+  gps_location?: {
+    latitude: number;
+    longitude: number;
+    accuracy_meters?: number;
+    captured_at_ms?: number;
+  };
 };
 
 export type WorldcoinFirstEntryPayload = {
@@ -126,14 +132,20 @@ export function canonicalMessage(parts: {
   nullifier_hash: string;
   action: string;
   signal?: string;
+  gps_latitude?: number;
+  gps_longitude?: number;
+  gps_captured_at_ms?: number;
   timestamp_ms: number;
 }): string {
   return [
-    "livy-worldcoin-v1",
+    "livy-worldcoin-v2",
     parts.content_hash,
     parts.nullifier_hash,
     parts.action,
     parts.signal ?? "",
+    parts.gps_latitude != null ? String(parts.gps_latitude) : "",
+    parts.gps_longitude != null ? String(parts.gps_longitude) : "",
+    parts.gps_captured_at_ms != null ? String(parts.gps_captured_at_ms) : "",
     String(parts.timestamp_ms),
     parts.content_id,
   ].join("|");
@@ -194,6 +206,13 @@ export function buildWorldcoinFirstEntry(
     `worldid:proof_status:${input.worldcoin_proof.proof_status}`,
     `worldid:verification_level:${input.worldcoin_proof.verification_level}`,
   ];
+  if (input.worldcoin_proof.gps_location) {
+    relationMarkers.push(`gps:lat:${input.worldcoin_proof.gps_location.latitude}`);
+    relationMarkers.push(`gps:lon:${input.worldcoin_proof.gps_location.longitude}`);
+    if (input.worldcoin_proof.gps_location.captured_at_ms != null) {
+      relationMarkers.push(`gps:captured_at_ms:${input.worldcoin_proof.gps_location.captured_at_ms}`);
+    }
+  }
 
   const publicValuesEntries: unknown[] = [
     input.content_id,
@@ -214,6 +233,9 @@ export function buildWorldcoinFirstEntry(
     nullifier_hash: input.worldcoin_proof.nullifier_hash,
     action: input.worldcoin_proof.action,
     signal: input.worldcoin_proof.signal,
+    gps_latitude: input.worldcoin_proof.gps_location?.latitude,
+    gps_longitude: input.worldcoin_proof.gps_location?.longitude,
+    gps_captured_at_ms: input.worldcoin_proof.gps_location?.captured_at_ms,
     timestamp_ms: input.timestamp_ms,
   });
   const worldSig = makeWorldSignature(message, keyMaterial.privateKeyPem, keyMaterial.publicKeyPem);
@@ -229,7 +251,7 @@ export function buildWorldcoinFirstEntry(
     worldcoin_proof: input.worldcoin_proof,
     world_signature: worldSig,
     signature: worldSig.signature_b64,
-    signature_algorithm: "ed25519:worldid:v1",
+    signature_algorithm: "ed25519:worldid:v2",
     relation_markers: relationMarkers,
     livy_public_values: {
       entries: publicValuesEntries,

@@ -18,6 +18,7 @@ type SubmitResponse = {
   ok: boolean;
   payload?: unknown;
   verification_environment?: string;
+  image_record_id?: number;
   error?: string;
   detail?: unknown;
 };
@@ -27,6 +28,13 @@ type MiniAppProof = {
   merkle_root: string;
   nullifier_hash: string;
   verification_level: string;
+};
+
+type GpsLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy_meters?: number;
+  captured_at_ms: number;
 };
 
 type VerificationPayload =
@@ -77,6 +85,17 @@ async function sha256Hex(file: File): Promise<string> {
     .join("");
 }
 
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 // ---- component -------------------------------------------------------------
 
 export default function Page() {
@@ -86,6 +105,7 @@ export default function Page() {
 
   // image state
   const [file, setFile] = useState<File | null>(null);
+  const [fileBase64, setFileBase64] = useState("");
   const [contentId, setContentId] = useState("photo-001");
   const [contentHash, setContentHash] = useState("");
   const [busyHash, setBusyHash] = useState(false);
@@ -102,6 +122,9 @@ export default function Page() {
   // submit state
   const [busySubmit, setBusySubmit] = useState(false);
   const [submitResult, setSubmitResult] = useState<SubmitResponse | null>(null);
+  const [denyStorageConsent, setDenyStorageConsent] = useState(false);
+  const [gpsLocation, setGpsLocation] = useState<GpsLocation | null>(null);
+  const [busyGps, setBusyGps] = useState(false);
 
   // shared error
   const [error, setError] = useState("");
@@ -139,10 +162,15 @@ export default function Page() {
     setWidgetOpen(false);
     setRpContext(null);
     verifySucceededRef.current = false;
+    setDenyStorageConsent(false);
+    setFileBase64("");
+    setGpsLocation(null);
     if (!selected) return;
 
     setBusyHash(true);
     try {
+      const fileBuffer = await selected.arrayBuffer();
+      setFileBase64(arrayBufferToBase64(fileBuffer));
       const hex = await sha256Hex(selected);
       setContentHash(`sha256:${hex}`);
       if (!contentId || contentId === "photo-001") {
@@ -163,6 +191,8 @@ export default function Page() {
     setWidgetOpen(false);
     setRpContext(null);
     verifySucceededRef.current = false;
+    setDenyStorageConsent(false);
+    setGpsLocation(null);
 
     try {
       if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
@@ -277,8 +307,20 @@ export default function Page() {
       setError("Complete World ID verification first.");
       return;
     }
+    if (denyStorageConsent) {
+      setError("You opted out of storage for the hackathon purposes, so submission is won't be public.");
+      return;
+    }
     if (!contentId.trim()) {
       setError("content_id is required.");
+      return;
+    }
+    if (!file || !fileBase64) {
+      setError("Select an image first.");
+      return;
+    }
+    if (!gpsLocation) {
+      setError("GPS location is required before upload.");
       return;
     }
 
@@ -294,6 +336,13 @@ export default function Page() {
           content_id: contentId.trim(),
           content_hash: contentHash,
           timestamp_ms: Date.now(),
+          consent_to_store_image: !denyStorageConsent,
+          consent_scope: "ethglobal_hackathon",
+          image_base64: fileBase64,
+          image_mime_type: file.type || "application/octet-stream",
+          image_file_name: file.name,
+          image_size_bytes: file.size,
+          gps_location: gpsLocation,
           ...(verificationPayload.kind === "idkit"
             ? { idkitResponse: verificationPayload.idkitResponse }
             : { proof: verificationPayload.proof }),
@@ -309,6 +358,31 @@ export default function Page() {
     }
   }
 
+  function captureGpsLocation() {
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported in this browser.");
+      return;
+    }
+    setBusyGps(true);
+    setError("");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGpsLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy_meters: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : undefined,
+          captured_at_ms: Date.now(),
+        });
+        setBusyGps(false);
+      },
+      (geoError) => {
+        setError(`Failed to capture GPS location: ${geoError.message}`);
+        setBusyGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  }
+
   // ---- render --------------------------------------------------------------
 
   return (
@@ -316,7 +390,7 @@ export default function Page() {
       <section className="card">
         <h1>Livy World Mini App</h1>
         <p className="muted">
-          Hash an image, bind it to a World ID proof, then sign and store the attestation.
+          Hash an image, bind it to a World ID proof, then upload image + provenance.
         </p>
 
         {/* Image */}
@@ -436,9 +510,45 @@ export default function Page() {
         </p>
         <p className="hint">Backend verify: {verifiedByBackend ? "✅ success" : "pending"}</p>
 
-        {/* Sign & submit */}
-        <button className="button" disabled={busySubmit || !verifiedByBackend} onClick={submit}>
-          {busySubmit ? "Signing..." : "Sign & Submit"}
+        {verifiedByBackend ? (
+          <label className="consent-toggle">
+            <input
+              type="checkbox"
+              checked={denyStorageConsent}
+              onChange={(e) => {
+                setDenyStorageConsent(e.target.checked);
+                if (e.target.checked) {
+                  setSubmitResult(null);
+                }
+              }}
+            />
+            <span>I do not give consent to store this picture in a database for ETHGlobal purposes.</span>
+          </label>
+        ) : null}
+        {verifiedByBackend && denyStorageConsent ? (
+          <p className="hint">Storage consent is denied, so Upload is disabled.</p>
+        ) : null}
+
+        {verifiedByBackend ? (
+          <>
+            <button className="button secondary" type="button" onClick={captureGpsLocation} disabled={busyGps}>
+              {busyGps ? "Capturing GPS..." : gpsLocation ? "Refresh GPS location" : "Capture GPS location"}
+            </button>
+            <p className="hint">
+              {gpsLocation
+                ? `GPS: ${gpsLocation.latitude.toFixed(6)}, ${gpsLocation.longitude.toFixed(6)}`
+                : "GPS location not captured yet."}
+            </p>
+          </>
+        ) : null}
+
+        {/* Upload */}
+        <button
+          className="button"
+          disabled={busySubmit || !verifiedByBackend || denyStorageConsent || !gpsLocation}
+          onClick={submit}
+        >
+          {busySubmit ? "Uploading..." : "Upload"}
         </button>
 
         {file ? <p className="hint">File: {file.name}</p> : null}
