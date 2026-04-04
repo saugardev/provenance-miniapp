@@ -33,6 +33,7 @@ export async function POST(request: Request): Promise<Response> {
     const body = await request.json().catch(() => ({}));
     const idkitResponse = body?.idkitResponse ?? body?.idkit_result;
     const miniAppProof = body?.proof ?? body?.worldcoin_proof;
+    const nonce = String(body?.nonce ?? "").trim();
     const requestedRpId = String(body?.rp_id ?? "").trim();
     if (!idkitResponse && !isMiniAppProof(miniAppProof)) {
       console.warn("[verify-proof] missing idkitResponse/proof in request body");
@@ -54,7 +55,7 @@ export async function POST(request: Request): Promise<Response> {
       console.log(
         `[verify-proof] forwarding mini app proof action="${action}" verification_level="${miniAppProof.verification_level}"`,
       );
-      const result = await verifyMiniAppProof(miniAppProof, action, signal);
+      const result = await verifyMiniAppProof(miniAppProof, action, signal, nonce);
       if (result.success) {
         const { nullifier, verificationLevel } = extractMiniAppFields(miniAppProof);
         console.log(

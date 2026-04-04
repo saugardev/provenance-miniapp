@@ -20,6 +20,7 @@ type SignBody = {
   content_id?: string;
   content_hash?: string;
   timestamp_ms?: number;
+  nonce?: string;
   gps_location?: {
     latitude?: number;
     longitude?: number;
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
     const content_id = String(body?.content_id ?? "").trim();
     const content_hash = String(body?.content_hash ?? "").trim();
     const timestamp_ms = Number.isFinite(Number(body?.timestamp_ms)) ? Number(body.timestamp_ms) : Date.now();
+    const nonce = String(body?.nonce ?? "").trim();
     const gpsLatitude = Number(body?.gps_location?.latitude);
     const gpsLongitude = Number(body?.gps_location?.longitude);
     const gpsAccuracyMeters = Number.isFinite(Number(body?.gps_location?.accuracy_meters))
@@ -77,7 +79,7 @@ export async function POST(req: Request) {
     let verificationBypassed = false;
 
     if (isMiniAppProof(miniAppProof)) {
-      verification = await verifyMiniAppProof(miniAppProof, action, content_hash);
+      verification = await verifyMiniAppProof(miniAppProof, action, content_hash, nonce);
       if (!verification.success) {
         if (shouldBypassInvalidAction(verification.detail)) {
           verificationBypassed = true;

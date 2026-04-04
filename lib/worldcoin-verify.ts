@@ -12,6 +12,7 @@
  */
 
 import { hashSignal } from "@worldcoin/idkit/hashing";
+import { randomBytes } from "node:crypto";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -106,26 +107,40 @@ export async function verifyMiniAppProof(
   proof: MiniAppProof,
   action: string,
   signal: string,
+  nonceInput?: string,
 ): Promise<VerifyResult> {
   const appId = resolveWorldcoinAppId();
   const apiBase =
     process.env.WORLDCOIN_MINIAPP_VERIFY_BASE_URL ??
     process.env.WORLDCOIN_VERIFY_BASE_URL ??
-    "https://developer.worldcoin.org";
+    "https://developer.world.org";
 
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.WORLDCOIN_API_KEY) {
     headers.authorization = `Bearer ${process.env.WORLDCOIN_API_KEY}`;
   }
 
+  const nonce = String(nonceInput ?? "").trim() || `0x${randomBytes(16).toString("hex")}`;
+
+  const verifyPayload = {
+    protocol_version: "3.0",
+    action,
+    nonce,
+    responses: [
+      {
+        identifier: proof.verification_level,
+        merkle_root: proof.merkle_root,
+        nullifier: proof.nullifier_hash,
+        proof: proof.proof,
+        signal_hash: hashSignal(signal),
+      },
+    ],
+  };
+
   const resp = await fetch(`${apiBase}/api/v4/verify/${appId}`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      ...proof,
-      action,
-      signal_hash: hashSignal(signal),
-    }),
+    body: JSON.stringify(verifyPayload),
   });
 
   const body = await resp.json().catch(() => ({}));

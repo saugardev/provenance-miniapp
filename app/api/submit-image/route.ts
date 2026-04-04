@@ -53,6 +53,7 @@ type SubmitBody = {
   content_id?: string;
   content_hash?: string;
   timestamp_ms?: number;
+  nonce?: string;
   consent_to_store_image?: boolean;
   consent_scope?: string;
   image_base64?: string;
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
     const content_id = String(body?.content_id ?? "").trim();
     const content_hash = String(body?.content_hash ?? "").trim();
     const timestamp_ms = Number.isFinite(Number(body?.timestamp_ms)) ? Number(body.timestamp_ms) : Date.now();
+    const nonce = String(body?.nonce ?? "").trim();
     const consentToStoreImage = body?.consent_to_store_image !== false;
     const consentScope = String(body?.consent_scope ?? "").trim();
     const imageBase64 = String(body?.image_base64 ?? "").trim();
@@ -144,7 +146,7 @@ export async function POST(req: Request) {
       console.log(
         `[submit-image] verifying mini app proof action="${action}" verification_level="${miniAppProof.verification_level}"`,
       );
-      verification = await verifyMiniAppProof(miniAppProof, action, content_hash);
+      verification = await verifyMiniAppProof(miniAppProof, action, content_hash, nonce);
       if (!verification.success) {
         if (shouldBypassInvalidAction(verification.detail)) {
           verificationBypassed = true;
