@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ISuccessResult } from "@worldcoin/minikit-js";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { appendSubmission, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
-import { verifyIdKitResponseFlexible, verifyWorldcoinProof } from "../../../lib/worldcoin-verify";
+import { verifyIdKitResponse } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -13,26 +12,33 @@ type SubmitBody = {
   content_id?: string;
   content_hash?: string;
   timestamp_ms?: number;
-  miniapp_payload?: ISuccessResult;
   idkit_response?: unknown;
-  worldcoin_proof?: {
-    action?: string;
-    signal?: string;
-    proof?: string;
-    merkle_root?: string;
-    nullifier_hash?: string;
-    verification_level?: string;
-    version?: number;
-    nonce?: string;
-  };
 };
 
 function isSha256Hash(v: string): boolean {
   return /^sha256:[0-9a-f]{64}$/i.test(v);
 }
 
-function isAllowedVerificationLevel(level: string): boolean {
-  return level === "orb" || level === "device";
+// Extracts the key fields from an IDKitResult (v3 or v4)
+function extractIdkitFields(result: unknown): {
+  nullifier_hash: string;
+  verification_level: string;
+  action: string;
+  merkle_root: string;
+} {
+  const r = result as any;
+  const response0 = Array.isArray(r?.responses) ? r.responses[0] : undefined;
+
+  return {
+    // v3: nullifier, v4: nullifier (RP-scoped)
+    nullifier_hash: String(response0?.nullifier ?? response0?.nullifier_hash ?? "").trim(),
+    // v3/v4: identifier (e.g. "proof_of_human", "orb", "device")
+    verification_level: String(response0?.identifier ?? "").trim(),
+    // action is at the top level in v3/v4 uniqueness proofs
+    action: String(r?.action ?? "").trim(),
+    // v3 only — absent in v4 (embedded as 5th element of proof array)
+    merkle_root: String(response0?.merkle_root ?? "").trim(),
+  };
 }
 
 export async function POST(req: Request) {
@@ -49,119 +55,29 @@ export async function POST(req: Request) {
     if (!isSha256Hash(content_hash)) {
       return NextResponse.json({ error: "content_hash must match sha256:<64-hex>" }, { status: 400 });
     }
-    const proofInput = body?.worldcoin_proof ?? {};
+    if (!body?.idkit_response) {
+      return NextResponse.json({ error: "idkit_response is required" }, { status: 400 });
+    }
+
     const configuredAction = String(process.env.WORLDCOIN_ACTION ?? "").trim();
-    let action = String(proofInput?.action ?? "").trim();
     const signal = content_hash;
-    let proof = String(proofInput?.proof ?? "").trim();
-    let merkle_root = String(proofInput?.merkle_root ?? "").trim();
-    let nullifier_hash = String(proofInput?.nullifier_hash ?? "").trim();
-    let verification_level = String(proofInput?.verification_level ?? "").trim();
-    let version = Number.isFinite(Number(proofInput?.version)) ? Number(proofInput?.version) : undefined;
-    let nonce = String(proofInput?.nonce ?? "").trim();
 
-    let verification;
-    if (body?.miniapp_payload) {
-      const actionForVerify = configuredAction || action || "upload-photo";
-      verification = await verifyWorldcoinProof({
-        action: actionForVerify,
-        signal,
-        proof: String(body.miniapp_payload.proof ?? ""),
-        merkle_root: String(body.miniapp_payload.merkle_root ?? ""),
-        nullifier_hash: String(body.miniapp_payload.nullifier_hash ?? ""),
-        verification_level: String(body.miniapp_payload.verification_level ?? ""),
-        nonce: String((body.miniapp_payload as any).nonce ?? ""),
-      });
-      proof = String(body.miniapp_payload.proof ?? proof).trim();
-      merkle_root = String(body.miniapp_payload.merkle_root ?? merkle_root).trim();
-      nullifier_hash = String(body.miniapp_payload.nullifier_hash ?? nullifier_hash).trim();
-      verification_level = String(body.miniapp_payload.verification_level ?? verification_level).trim();
-      action = actionForVerify;
-    } else if (body?.idkit_response) {
-      const raw = body.idkit_response as any;
-      const idkitWithHints = {
-        ...(raw && typeof raw === "object" ? raw : {}),
-        action: String(raw?.action ?? (configuredAction || action || "upload-photo")),
-        signal: String(raw?.signal ?? signal),
-      };
-      verification = await verifyIdKitResponseFlexible(idkitWithHints);
-      action = String(verification.parsed?.action ?? action).trim();
-      proof = String(verification.parsed?.proof ?? proof).trim();
-      merkle_root = String(verification.parsed?.merkle_root ?? merkle_root).trim();
-      nullifier_hash = String(verification.parsed?.nullifier_hash ?? nullifier_hash).trim();
-      verification_level = String(verification.parsed?.verification_level ?? verification_level).trim();
-      nonce = String(verification.parsed?.nonce ?? nonce).trim();
-
-      // Some MiniKit payload variants omit required fields in the first candidate.
-      // If World explicitly asks for one of them and we can assemble a full payload, retry once.
-      const requiredAttribute = String((verification.detail as any)?.payload?.attribute ?? "");
-      const requiredFieldFailure =
-        !verification.success &&
-        (requiredAttribute === "nonce" || requiredAttribute === "action" || requiredAttribute === "signal") &&
-        /required/i.test(String((verification.detail as any)?.payload?.detail ?? ""));
-      const canRetryExplicit =
-        Boolean(configuredAction || action || "upload-photo") &&
-        Boolean(signal) &&
-        Boolean(proof) &&
-        Boolean(merkle_root) &&
-        Boolean(nullifier_hash) &&
-        Boolean(verification_level);
-      if (requiredFieldFailure && canRetryExplicit) {
-        verification = await verifyWorldcoinProof({
-          action: configuredAction || action || "upload-photo",
-          signal,
-          proof,
-          merkle_root,
-          nullifier_hash,
-          verification_level,
-          nonce: nonce || undefined,
-        });
-      }
-    } else {
-      if (!action || !proof || !merkle_root || !nullifier_hash || !verification_level) {
-        return NextResponse.json(
-          {
-            error: "worldcoin_proof.action, proof, merkle_root, nullifier_hash, verification_level are required",
-          },
-          { status: 400 },
-        );
-      }
-      verification = await verifyWorldcoinProof({
-        action: configuredAction || action || "upload-photo",
-        signal,
-        proof,
-        merkle_root,
-        nullifier_hash,
-        verification_level,
-        nonce,
-      });
-    }
-
-    if (!isAllowedVerificationLevel(verification_level)) {
-      return NextResponse.json(
-        { error: "verification_level must be one of: orb, device" },
-        { status: 400 },
-      );
-    }
+    // Verify the IDKit result directly — works for both v3 and v4 protocol versions
+    const verification = await verifyIdKitResponse(body.idkit_response);
 
     if (!verification.success) {
       return NextResponse.json(
         {
           error: "worldcoin proof verification failed",
           detail: verification.detail,
-          debug_verification_input: {
-            action: configuredAction || action || "upload-photo",
-            signal,
-            proof_present: Boolean(proof),
-            merkle_root_present: Boolean(merkle_root),
-            nullifier_hash_present: Boolean(nullifier_hash),
-            verification_level,
-            nonce_present: Boolean(nonce),
-          },
         },
         { status: 401 },
       );
     }
+
+    // Extract fields from the verified IDKit result
+    const { nullifier_hash, verification_level, action: resultAction, merkle_root } = extractIdkitFields(body.idkit_response);
+    const action = configuredAction || resultAction || "upload-photo";
 
     const dataDir = resolve(process.cwd(), "state");
     const statePath = resolve(dataDir, "backend-state.json");
@@ -176,7 +92,7 @@ export async function POST(req: Request) {
       miniapp_session_id: verification.session_id || `session-${timestamp_ms}`,
       merkle_root,
       verification_level,
-      version,
+      version: undefined,
       action,
       signal,
     };
@@ -203,16 +119,6 @@ export async function POST(req: Request) {
       ok: true,
       payload,
       verification_environment: verification.environment,
-      worldcoin_verification_input: {
-        action,
-        signal,
-        proof,
-        merkle_root,
-        nullifier_hash,
-        verification_level,
-        version,
-        nonce,
-      },
       worldcoin_verification_result: verification.detail,
       latest_path: latestPath,
     });

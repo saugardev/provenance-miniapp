@@ -1,18 +1,7 @@
 "use client";
 
-import { MiniKit, type VerificationLevel } from "@worldcoin/minikit-js";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
-
-type WorldProofInput = {
-  action: string;
-  signal: string;
-  proof: string;
-  merkle_root: string;
-  nullifier_hash: string;
-  nonce: string;
-  verification_level: string;
-  version: string;
-};
+import { IDKit, type IDKitResult } from "@worldcoin/idkit";
+import { ChangeEvent, useMemo, useState } from "react";
 
 type SubmitResponse = {
   ok: boolean;
@@ -28,9 +17,13 @@ type VerifyProofResponse = {
   detail?: unknown;
 };
 
-function asVerificationLevel(value: string): VerificationLevel {
-  return value as VerificationLevel;
-}
+type RpSignatureResponse = {
+  sig: string;
+  nonce: string;
+  created_at: number;
+  expires_at: number;
+  rp_id: string;
+};
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
@@ -46,46 +39,22 @@ async function sha256Hex(file: File): Promise<string> {
 
 export default function Page() {
   const configuredAction = (process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "upload-photo").trim();
+  const appId = (process.env.NEXT_PUBLIC_WORLDCOIN_APP_ID ?? "") as `app_${string}`;
+
   const [file, setFile] = useState<File | null>(null);
   const [contentId, setContentId] = useState("photo-001");
   const [contentHash, setContentHash] = useState("");
-  const [proof, setProof] = useState<WorldProofInput>({
-    action: configuredAction,
-    signal: "",
-    proof: "",
-    merkle_root: "",
-    nullifier_hash: "",
-    nonce: "",
-    verification_level: "orb",
-    version: "1",
-  });
+  const [idkitResult, setIdkitResult] = useState<IDKitResult | null>(null);
+  const [verifiedByBackend, setVerifiedByBackend] = useState(false);
   const [busyHash, setBusyHash] = useState(false);
   const [busySubmit, setBusySubmit] = useState(false);
   const [busyWorldVerify, setBusyWorldVerify] = useState(false);
-  const [miniKitReady, setMiniKitReady] = useState(false);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState("");
-  const [idkitResponse, setIdkitResponse] = useState<any | null>(null);
-  const [verifiedByBackend, setVerifiedByBackend] = useState(false);
 
   const hashPreview = useMemo(() => {
     if (!contentHash) return "";
     return contentHash.length > 36 ? `${contentHash.slice(0, 24)}...${contentHash.slice(-10)}` : contentHash;
-  }, [contentHash]);
-
-  useEffect(() => {
-    try {
-      MiniKit.install();
-      setMiniKitReady(MiniKit.isInstalled());
-    } catch {
-      setMiniKitReady(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setProof((prev) => ({ ...prev, signal: contentHash }));
-    setIdkitResponse(null);
-    setVerifiedByBackend(false);
   }, [contentHash]);
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -93,6 +62,8 @@ export default function Page() {
     setFile(selected);
     setResult(null);
     setError("");
+    setIdkitResult(null);
+    setVerifiedByBackend(false);
     if (!selected) {
       setContentHash("");
       return;
@@ -112,73 +83,71 @@ export default function Page() {
     }
   }
 
-  function updateProof<K extends keyof WorldProofInput>(key: K, value: WorldProofInput[K]) {
-    setProof((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function fillFromMiniKit() {
+  async function fillFromIDKit() {
     setBusyWorldVerify(true);
     setError("");
+    setIdkitResult(null);
+    setVerifiedByBackend(false);
     try {
       if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
         throw new Error("Select an image first so signal is bound to content_hash.");
       }
-      if (!MiniKit.isInstalled()) {
-        throw new Error("MiniKit verify API not found. Open this app inside World App Mini App context.");
+      if (!appId || !appId.startsWith("app_")) {
+        throw new Error("NEXT_PUBLIC_WORLDCOIN_APP_ID is not set or invalid (must start with app_).");
       }
 
-      const verifyInput: any = {
+      // 1. Get RP context from backend (requires RP_SIGNING_KEY)
+      const rpResp = await fetch("/api/rp-signature", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: configuredAction }),
+      });
+      if (!rpResp.ok) {
+        const rpErr = await rpResp.json().catch(() => ({}));
+        throw new Error(`Failed to get RP signature: ${JSON.stringify(rpErr)}`);
+      }
+      const rpData = (await rpResp.json()) as RpSignatureResponse;
+
+      // 2. Create IDKit request with RP context
+      const request = await IDKit.request({
+        app_id: appId,
         action: configuredAction,
-        signal: contentHash,
-        verification_level: asVerificationLevel(proof.verification_level.trim() || "orb"),
-        nonce: crypto.randomUUID(),
-      };
-      const out = await MiniKit.commandsAsync.verify(verifyInput);
+        rp_context: {
+          rp_id: rpData.rp_id,
+          nonce: rpData.nonce,
+          created_at: rpData.created_at,
+          expires_at: rpData.expires_at,
+          signature: rpData.sig,
+        },
+        allow_legacy_proofs: true,
+      }).constraints({ type: "proof_of_human", signal: contentHash });
 
-      const anyOut = out as any;
-      const payload = (anyOut?.finalPayload ?? anyOut?.payload ?? anyOut ?? {}) as any;
-      const requestedNonce = String(anyOut?.nonce ?? payload?.nonce ?? "").trim() || crypto.randomUUID();
-      if (!payload?.proof || !payload?.merkle_root || !payload?.nullifier_hash) {
-        throw new Error("MiniKit response did not include proof/merkle_root/nullifier_hash.");
+      // 3. Wait for World App to return proof (postMessage in mini app, QR + polling on web)
+      const completion = await request.pollUntilCompletion();
+      if (!completion.success) {
+        throw new Error(`World ID verification failed: ${completion.error}`);
       }
+      const idResult = completion.result;
+
+      // 4. Verify proof on backend
       const verifyResp = await fetch("/api/verify-proof", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          payload,
+          idkit_result: idResult,
           action: configuredAction,
           signal: contentHash,
-          nonce: requestedNonce,
         }),
       });
       const verifyJson = (await verifyResp.json()) as VerifyProofResponse;
       if (!verifyResp.ok || !verifyJson?.success) {
         throw new Error(`Backend verify failed: ${JSON.stringify(verifyJson?.detail ?? verifyJson)}`);
       }
-      setIdkitResponse(payload);
+
+      setIdkitResult(idResult);
       setVerifiedByBackend(true);
-
-      const nextProof = {
-        proof: String(payload?.proof ?? ""),
-        merkle_root: String(payload?.merkle_root ?? ""),
-        nullifier_hash: String(payload?.nullifier_hash ?? ""),
-        nonce: String(payload?.nonce ?? requestedNonce ?? ""),
-        verification_level: String(payload?.verification_level ?? proof.verification_level),
-        version:
-          payload?.version != null ? String(payload.version) : proof.version,
-      };
-
-      if (!nextProof.proof || !nextProof.merkle_root || !nextProof.nullifier_hash) {
-        throw new Error("MiniKit response did not include proof/merkle_root/nullifier_hash.");
-      }
-
-      setProof((prev) => ({
-        ...prev,
-        ...nextProof,
-      }));
     } catch (err) {
       setError(`World verify failed: ${String(err)}`);
-      setVerifiedByBackend(false);
     } finally {
       setBusyWorldVerify(false);
     }
@@ -193,25 +162,15 @@ export default function Page() {
       if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
         throw new Error("content_hash must be sha256:<64-hex>. Select an image first.");
       }
-      if (!verifiedByBackend || !idkitResponse) {
-        throw new Error("Run 'Try World MiniKit Verify' first and get a successful backend verification.");
+      if (!verifiedByBackend || !idkitResult) {
+        throw new Error("Run 'Verify with World ID' first and get a successful backend verification.");
       }
 
       const body = {
         content_id: contentId.trim(),
         content_hash: contentHash,
         timestamp_ms: Date.now(),
-        miniapp_payload: idkitResponse ?? undefined,
-        worldcoin_proof: {
-          action: configuredAction,
-          signal: contentHash,
-          proof: proof.proof.trim(),
-          merkle_root: proof.merkle_root.trim(),
-          nullifier_hash: proof.nullifier_hash.trim(),
-          nonce: proof.nonce.trim() || undefined,
-          verification_level: proof.verification_level.trim(),
-          version: Number.isFinite(Number(proof.version)) ? Number(proof.version) : undefined,
-        },
+        idkit_response: idkitResult,
       };
 
       const resp = await fetch("/api/submit-image", {
@@ -255,7 +214,7 @@ export default function Page() {
 
         <p className="hint">{busyHash ? "Hashing image..." : hashPreview ? `Hash ready: ${hashPreview}` : "Select an image to compute SHA-256."}</p>
 
-        <h2>World Proof</h2>
+        <h2>World ID 4.0 Proof</h2>
         <div className="row two">
           <label className="field">
             <span>action</span>
@@ -263,50 +222,14 @@ export default function Page() {
           </label>
           <label className="field">
             <span>signal (bound to image hash)</span>
-            <input value={proof.signal} readOnly />
+            <input value={contentHash} readOnly />
           </label>
         </div>
 
-        <label className="field">
-          <span>proof</span>
-          <textarea value={proof.proof} onChange={(e) => updateProof("proof", e.target.value)} rows={2} />
-        </label>
-
-        <div className="row two">
-          <label className="field">
-            <span>merkle_root</span>
-            <input value={proof.merkle_root} onChange={(e) => updateProof("merkle_root", e.target.value)} />
-          </label>
-          <label className="field">
-            <span>nullifier_hash</span>
-            <input value={proof.nullifier_hash} onChange={(e) => updateProof("nullifier_hash", e.target.value)} />
-          </label>
-        </div>
-
-        <label className="field">
-          <span>nonce</span>
-          <input value={proof.nonce} onChange={(e) => updateProof("nonce", e.target.value)} />
-        </label>
-
-        <div className="row two">
-          <label className="field">
-            <span>verification_level</span>
-            <select value={proof.verification_level} onChange={(e) => updateProof("verification_level", e.target.value)}>
-              <option value="orb">orb</option>
-              <option value="device">device</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>version</span>
-            <input value={proof.version} onChange={(e) => updateProof("version", e.target.value)} />
-          </label>
-        </div>
-
-        <button className="button secondary" disabled={busyWorldVerify} onClick={fillFromMiniKit}>
-          {busyWorldVerify ? "Verifying..." : "Try World MiniKit Verify"}
+        <button className="button secondary" disabled={busyWorldVerify} onClick={fillFromIDKit}>
+          {busyWorldVerify ? "Verifying..." : "Verify with World ID"}
         </button>
-        <p className="hint">MiniKit: {miniKitReady ? "installed" : "not detected (open in World App)"}</p>
-        <p className="hint">IDKit payload: {idkitResponse ? "captured" : "not captured yet"}</p>
+        <p className="hint">IDKit result: {idkitResult ? `captured (protocol ${(idkitResult as any).protocol_version})` : "not captured yet"}</p>
         <p className="hint">Backend verify: {verifiedByBackend ? "success" : "pending"}</p>
 
         <button className="button" disabled={busySubmit} onClick={submit}>
