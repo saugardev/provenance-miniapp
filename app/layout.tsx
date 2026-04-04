@@ -2,8 +2,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Livy World Mini App",
-  description: "Capture image hash, verify World ID proof, and sign payload in one Next.js app.",
+  title: "Prove Reality",
+  description: "Prove your photos are real and defend yourself from AI-generated fakes.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

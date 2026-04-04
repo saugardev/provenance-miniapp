@@ -1,8 +1,9 @@
 "use client";
 
-import { Bebas_Neue, DM_Sans } from "next/font/google";
+import { Bebas_Neue, Manrope } from "next/font/google";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import styles from "./landing.module.css";
 
 const bebasNeue = Bebas_Neue({
   weight: "400",
@@ -10,180 +11,66 @@ const bebasNeue = Bebas_Neue({
   display: "swap",
 });
 
-const dmSans = DM_Sans({
+const manrope = Manrope({
+  weight: ["400", "500", "700"],
   subsets: ["latin"],
   display: "swap",
 });
 
 export default function HomePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     video.preload = "auto";
-    video.play().catch(() => {/* autoplay blocked — stays as dark bg */});
+    video.play().catch(() => {
+      // Autoplay can be blocked by some webviews; keep solid dark fallback visible.
+    });
   }, []);
 
   return (
-    <>
-      <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(24px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .hero {
-          position: relative;
-          min-height: 100dvh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: flex-end;
-          padding: 0 24px 52px;
-          overflow: hidden;
-          background: #000;
-        }
-
-        .hero-video {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          opacity: 0.72;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        .hero-overlay {
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(
-            to bottom,
-            rgba(0,0,0,0.18) 0%,
-            rgba(0,0,0,0.10) 30%,
-            rgba(0,0,0,0.55) 65%,
-            rgba(0,0,0,0.82) 100%
-          );
-          z-index: 1;
-        }
-
-        .hero-content {
-          position: relative;
-          z-index: 2;
-          width: 100%;
-          max-width: 480px;
-          text-align: left;
-        }
-
-        .hero-eyebrow {
-          font-family: ${JSON.stringify(dmSans.style.fontFamily)};
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.22em;
-          text-transform: uppercase;
-          color: rgba(255,255,255,0.55);
-          margin: 0 0 12px;
-          animation: fadeUp 0.7s ease both;
-          animation-delay: 0.1s;
-        }
-
-        .hero-title {
-          font-family: ${JSON.stringify(bebasNeue.style.fontFamily)};
-          font-size: clamp(72px, 22vw, 108px);
-          font-weight: 400;
-          line-height: 0.92;
-          letter-spacing: 0.01em;
-          color: #fff;
-          margin: 0 0 20px;
-          animation: fadeUp 0.7s ease both;
-          animation-delay: 0.22s;
-        }
-
-        .hero-subtitle {
-          font-family: ${JSON.stringify(dmSans.style.fontFamily)};
-          font-size: 16px;
-          font-weight: 400;
-          line-height: 1.55;
-          color: rgba(255,255,255,0.72);
-          margin: 0 0 36px;
-          max-width: 320px;
-          animation: fadeUp 0.7s ease both;
-          animation-delay: 0.34s;
-        }
-
-        .hero-cta {
-          display: block;
-          width: 100%;
-          padding: 17px 24px;
-          border-radius: 999px;
-          border: none;
-          background: #fff;
-          color: #000;
-          font-family: ${JSON.stringify(dmSans.style.fontFamily)};
-          font-size: 16px;
-          font-weight: 700;
-          letter-spacing: 0.01em;
-          text-align: center;
-          text-decoration: none;
-          cursor: pointer;
-          animation: fadeUp 0.7s ease both;
-          animation-delay: 0.46s;
-          transition: opacity 0.18s ease, transform 0.18s ease;
-        }
-
-        .hero-cta:active {
-          opacity: 0.85;
-          transform: scale(0.98);
-        }
-
-        .hero-terms {
-          font-family: ${JSON.stringify(dmSans.style.fontFamily)};
-          font-size: 11px;
-          color: rgba(255,255,255,0.38);
-          text-align: center;
-          margin: 14px 0 0;
-          line-height: 1.5;
-          animation: fadeUp 0.7s ease both;
-          animation-delay: 0.56s;
-        }
-
-        .hero-terms a {
-          color: rgba(255,255,255,0.55);
-          text-decoration: underline;
-          text-underline-offset: 2px;
-        }
-      `}</style>
-
-      <div className="hero">
+    <div className={styles.hero}>
+      <div className={manrope.className}>
         <video
           ref={videoRef}
-          className="hero-video"
+          className={[
+            styles.heroVideo,
+            videoReady ? styles.videoReady : styles.videoLoading,
+            videoFailed ? styles.videoHidden : "",
+          ].join(" ")}
           src="/hero-bg.webm"
           preload="none"
           muted
           loop
           playsInline
           autoPlay
+          aria-hidden="true"
+          onCanPlay={() => setVideoReady(true)}
+          onError={() => setVideoFailed(true)}
         />
-        <div className="hero-overlay" />
+        <div className={styles.heroOverlay} />
 
-        <div className="hero-content">
-          <p className="hero-eyebrow">Human-verified imagery</p>
-          <h1 className="hero-title">Prove<br />reality</h1>
-          <p className="hero-subtitle">
+        <div className={styles.heroContent}>
+          <p className={styles.heroEyebrow}>Human-verified imagery</p>
+          <h1 className={`${styles.heroTitle} ${bebasNeue.className}`}>
+            Prove
+            <br />
+            reality
+          </h1>
+          <p className={styles.heroSubtitle}>
             Prove your photos are real and defend yourself from AI
           </p>
-          <Link href="/verify" className="hero-cta">
-            Prove my reality
+          <Link href="/verify" className={styles.heroCta}>
+            Prove humanity
           </Link>
-          <p className="hero-terms">
-            By pressing &ldquo;Prove my reality&rdquo; you accept our{" "}
-            <a href="#">Terms and Conditions</a>.
+          <p className={styles.heroTerms}>
+            By pressing &ldquo;Prove humanity&rdquo; you accept our Terms and Conditions.
           </p>
         </div>
       </div>
-    </>
+    </div>
   );
 }

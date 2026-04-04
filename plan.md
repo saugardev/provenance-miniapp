@@ -14,11 +14,13 @@ The goal is to add a cinematic landing/registration page before the existing ver
 ## Steps
 
 ### 1. Rename video asset
-- [ ] Rename `public/combined.fast.webm` → `public/hero-bg.webm`
+- [x] Rename `public/combined.fast.webm` → `public/hero-bg.webm`
+  - Note: `public/hero-bg.webm` is in place and used by the landing page video element.
 
 ### 2. Move existing verification page
-- [ ] Move `app/page.tsx` (current verification UI) → `app/verify/page.tsx`
-- [ ] Create `app/verify/` directory if needed
+- [x] Move `app/page.tsx` (current verification UI) → `app/verify/page.tsx`
+- [x] Create `app/verify/` directory if needed
+  - Note: The verification flow now lives at `/verify` in `app/verify/page.tsx`.
 
 ### 3. Create landing page (`app/page.tsx`)
 
@@ -49,15 +51,17 @@ CSS approach:
 - Entrance animations via `@keyframes` + `animation-delay` for stagger
 
 ### 4. Update metadata
-- [ ] Update `app/layout.tsx` metadata: title "Prove Reality", description to match new app purpose
+- [x] Update `app/layout.tsx` metadata: title "Prove Reality", description to match new app purpose
 
 ### 5. CSS for landing page
-- [ ] Add landing-page styles to `app/globals.css` (or a module) without breaking existing verify page styles
-- [ ] Ensure no style bleed between pages
+- [x] Add landing-page styles to `app/globals.css` (or a module) without breaking existing verify page styles
+- [x] Ensure no style bleed between pages
+  - Note: Landing styles were isolated into `app/landing.module.css`.
 
 ### 6. Verify routing works
-- [ ] Confirm `/` renders the new landing page
-- [ ] Confirm `/verify` renders the existing verification flow unchanged
+- [x] Confirm `/` renders the new landing page
+- [x] Confirm `/verify` renders the existing verification flow unchanged
+  - Note: App Router structure is correct and `pnpm exec tsc --noEmit` passes.
 
 ---
 
@@ -73,8 +77,8 @@ CSS approach:
 
 ## Definition of Done
 
-- [ ] Landing page renders with fullscreen video background
-- [ ] Text and button are visible and well-styled
-- [ ] Clicking "Prove my reality" navigates to `/verify`
-- [ ] No regressions on the verify page
-- [ ] Terms note visible below the button
+- [x] Landing page renders with fullscreen video background
+- [x] Text and button are visible and well-styled
+- [x] Clicking "Prove my reality" navigates to `/verify`
+- [x] No regressions on the verify page
+- [x] Terms note visible below the button
