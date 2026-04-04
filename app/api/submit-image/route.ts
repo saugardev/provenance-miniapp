@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { appendSubmission, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
-import { verifyIdKitResponse, verifyWorldcoinProof } from "../../../lib/worldcoin-verify";
+import { verifyIdKitResponseFlexible, verifyWorldcoinProof } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -59,16 +59,13 @@ export async function POST(req: Request) {
 
     let verification;
     if (body?.idkit_response) {
-      const idkit = body.idkit_response as any;
-      const resp0 = Array.isArray(idkit?.responses) ? idkit.responses[0] : undefined;
-      action = String(idkit?.action ?? action).trim();
-      proof = String(resp0?.proof ?? proof).trim();
-      merkle_root = String(resp0?.merkle_root ?? merkle_root).trim();
-      nullifier_hash = String(resp0?.nullifier ?? resp0?.nullifier_hash ?? nullifier_hash).trim();
-      verification_level = String(resp0?.identifier ?? verification_level).trim();
-      nonce = String(resp0?.nonce ?? idkit?.nonce ?? nonce).trim();
-
-      verification = await verifyIdKitResponse(body.idkit_response);
+      verification = await verifyIdKitResponseFlexible(body.idkit_response);
+      action = String(verification.parsed?.action ?? action).trim();
+      proof = String(verification.parsed?.proof ?? proof).trim();
+      merkle_root = String(verification.parsed?.merkle_root ?? merkle_root).trim();
+      nullifier_hash = String(verification.parsed?.nullifier_hash ?? nullifier_hash).trim();
+      verification_level = String(verification.parsed?.verification_level ?? verification_level).trim();
+      nonce = String(verification.parsed?.nonce ?? nonce).trim();
     } else {
       if (!action || !proof || !merkle_root || !nullifier_hash || !verification_level) {
         return NextResponse.json(
