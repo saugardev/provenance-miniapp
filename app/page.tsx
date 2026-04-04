@@ -1,6 +1,6 @@
 "use client";
 
-import { IDKit, orbLegacy, IDKitErrorCodes, type IDKitResult } from "@worldcoin/idkit";
+import { IDKitRequestWidget, orbLegacy, IDKitErrorCodes, type IDKitResult, type RpContext } from "@worldcoin/idkit";
 import { ChangeEvent, useMemo, useState } from "react";
 
 // ---- types ----------------------------------------------------------------
@@ -80,7 +80,8 @@ export default function Page() {
   const [verifiedByBackend, setVerifiedByBackend] = useState(false);
   const [busyVerify, setBusyVerify] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState("");
-  const [connectorURI, setConnectorURI] = useState("");
+  const [widgetOpen, setWidgetOpen] = useState(false);
+  const [rpContext, setRpContext] = useState<RpContext | null>(null);
 
   // submit state
   const [busySubmit, setBusySubmit] = useState(false);
@@ -137,11 +138,8 @@ export default function Page() {
   async function verify() {
     setBusyVerify(true);
     setError("");
-    setConnectorURI("");
     setIdkitResult(null);
     setVerifiedByBackend(false);
-    let waitingTicker: ReturnType<typeof setInterval> | null = null;
-    let waitingLogTicker: ReturnType<typeof setInterval> | null = null;
 
     try {
       logClient("Starting verification", { mode: "legacy", action: ACTION });
@@ -154,9 +152,8 @@ export default function Page() {
 
       // Step 1 — fetch RP context from backend (signing key never leaves the server)
       setVerifyStatus("Fetching RP signature...");
-      const verifyTimeoutMs = 900_000;
       const rpTtlSeconds = 900;
-      logClient("Fetching RP signature", { verifyTimeoutMs, rpTtlSeconds, preset: "orbLegacy" });
+      logClient("Fetching RP signature", { rpTtlSeconds, preset: "orbLegacy" });
 
       const rpResp = await fetch("/api/rp-signature", {
         method: "POST",
@@ -169,97 +166,22 @@ export default function Page() {
       }
       const rp = (await rpResp.json()) as RpSignatureResponse;
       logClient("RP signature received", { rp_id: rp.rp_id, expires_at: rp.expires_at });
-
-      setVerifyStatus("Connecting to World App...");
-      logClient("Building IDKit request");
-
-      // Step 2 — create IDKit request
-      // signal is bound to the image hash so the proof is cryptographically tied to this content.
-      // v3 orbLegacy only.
-      const builder = IDKit.request({
-        app_id: APP_ID,
-        action: ACTION,
-        rp_context: {
-          rp_id: rp.rp_id,
-          nonce: rp.nonce,
-          created_at: rp.created_at,
-          expires_at: rp.expires_at,
-          signature: rp.sig,
-        },
-        allow_legacy_proofs: true,
-      });
-
-      const request = await builder.preset(orbLegacy({ signal: contentHash }));
-
-      // connectorURI is empty inside World App (postMessage), non-empty on web (bridge/QR)
-      if (request.connectorURI) {
-        setConnectorURI(request.connectorURI);
-        setVerifyStatus("Open World App to approve...");
-        logClient("Connector URI available (web bridge/QR)");
-      } else {
-        setVerifyStatus("Approve the request in World App...");
-        logClient("Running inside World App (no connector URI)");
-      }
-
-      // Step 3 — use IDKit completion API (no manual pollOnce loop)
-      setVerifyStatus("Waiting for World App confirmation...");
-      const startedAt = Date.now();
-      logClient("Waiting for World App confirmation (poll loop started)");
-      waitingTicker = setInterval(() => {
-        const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-        setVerifyStatus(`Waiting for World App confirmation... (${elapsedSec}s)`);
-      }, 2_000);
-      waitingLogTicker = setInterval(() => {
-        const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-        logClient("Still waiting for completion", { elapsedSec });
-      }, 10_000);
-      const completion = await request.pollUntilCompletion({
-        pollInterval: 2_000,
-        timeout: verifyTimeoutMs,
-      });
-      if (!completion.success) {
-        if (completion.error === IDKitErrorCodes.Timeout) {
-          throw new Error(
-            "Verification timed out after 15 minutes. v3 orb proofs can be delayed when inclusion is pending; retry later.",
-          );
-        }
-        if (completion.error === IDKitErrorCodes.Cancelled) {
-          throw new Error("Verification was cancelled in World App.");
-        }
-        throw new Error(idkitErrorMessage(completion.error));
-      }
-      const idResult = completion.result;
-      logClient("Proof captured", { protocol_version: (idResult as any)?.protocol_version ?? "unknown" });
-
-      // Step 4 — verify proof on backend
-      setVerifyStatus("Verifying proof on backend...");
-      logClient("Sending proof to backend verify");
-      const verifyResp = await fetch("/api/verify-proof", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rp_id: rp.rp_id, idkitResponse: idResult }),
-      });
-      const verifyJson = await verifyResp.json();
-      if (!verifyResp.ok || !verifyJson?.success) {
-        throw new Error(`Backend verification failed: ${JSON.stringify(verifyJson?.detail ?? verifyJson)}`);
-      }
-      logClient("Backend verification succeeded", {
-        session_id: verifyJson?.session_id,
-        nullifier_hash: verifyJson?.nullifier_hash,
-      });
-
-      setIdkitResult(idResult);
-      setVerifiedByBackend(true);
-      setVerifyStatus("");
-      setConnectorURI("");
+      const nextRpContext: RpContext = {
+        rp_id: rp.rp_id,
+        nonce: rp.nonce,
+        created_at: rp.created_at,
+        expires_at: rp.expires_at,
+        signature: rp.sig,
+      };
+      setRpContext(nextRpContext);
+      setWidgetOpen(true);
+      setVerifyStatus("Widget opened. Approve in World App...");
+      logClient("Opening IDKitRequestWidget", { rp_id: nextRpContext.rp_id });
     } catch (err) {
       logClient("Verification failed", String(err));
       setError(String(err));
       setVerifyStatus("");
-      setConnectorURI("");
     } finally {
-      if (waitingTicker !== null) clearInterval(waitingTicker);
-      if (waitingLogTicker !== null) clearInterval(waitingLogTicker);
       setBusyVerify(false);
     }
   }
@@ -347,17 +269,53 @@ export default function Page() {
         </button>
 
         {verifyStatus ? <p className="hint">⏳ {verifyStatus}</p> : null}
-
-        {connectorURI ? (
-          <div className="result" style={{ padding: "12px" }}>
-            <p className="hint" style={{ marginBottom: "8px" }}>
-              Not inside World App — tap to open and approve:
-            </p>
-            <a className="button secondary" href={connectorURI} target="_blank" rel="noopener noreferrer"
-               style={{ display: "inline-block", textAlign: "center" }}>
-              Open in World App
-            </a>
-          </div>
+        {rpContext ? (
+          <IDKitRequestWidget
+            open={widgetOpen}
+            onOpenChange={(open) => {
+              setWidgetOpen(open);
+              if (!open && !verifiedByBackend) {
+                setVerifyStatus("Widget closed.");
+              }
+            }}
+            app_id={APP_ID}
+            action={ACTION}
+            rp_context={rpContext}
+            allow_legacy_proofs={true}
+            preset={orbLegacy({ signal: contentHash })}
+            environment="production"
+            handleVerify={async (result) => {
+              logClient("Widget returned proof, verifying on backend");
+              setVerifyStatus("Verifying proof on backend...");
+              const verifyResp = await fetch("/api/verify-proof", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ rp_id: rpContext.rp_id, idkitResponse: result }),
+              });
+              const verifyJson = await verifyResp.json();
+              if (!verifyResp.ok || !verifyJson?.success) {
+                logClient("Backend verification failed", verifyJson?.detail ?? verifyJson);
+                throw new Error("Backend verification failed");
+              }
+              logClient("Backend verification succeeded", {
+                session_id: verifyJson?.session_id,
+                nullifier_hash: verifyJson?.nullifier_hash,
+              });
+            }}
+            onSuccess={(result) => {
+              setIdkitResult(result);
+              setVerifiedByBackend(true);
+              setVerifyStatus("Verified.");
+              setError("");
+              logClient("Widget success", { protocol_version: (result as any)?.protocol_version ?? "unknown" });
+            }}
+            onError={(errorCode) => {
+              const msg = idkitErrorMessage(errorCode);
+              setError(msg);
+              setVerifyStatus("");
+              logClient("IDKit widget error", { errorCode });
+            }}
+          />
         ) : null}
 
         <p className="hint">
