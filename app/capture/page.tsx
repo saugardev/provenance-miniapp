@@ -565,6 +565,18 @@ export default function CapturePage() {
     }
   }
 
+  function shareOnX() {
+    const recordId = result?.image_record_id;
+    if (!recordId) {
+      setError("No proven image record available to share yet.");
+      return;
+    }
+    const proofUrl = `${window.location.origin}/prove/${recordId}`;
+    const text = "I created a real picture. You can prove it here:";
+    const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(proofUrl)}`;
+    window.open(intent, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <main className={`${styles.page} ${manrope.className}`}>
       <canvas ref={canvasRef} className={styles.hidden} />
@@ -682,6 +694,9 @@ export default function CapturePage() {
           <div className={styles.actions}>
             <button className={styles.primary} disabled={!signedPayload || busyOg} onClick={publishToOg}>
               {busyOg ? "Submitting..." : "Submit to 0G"}
+            </button>
+            <button className={styles.secondary} disabled={!result?.image_record_id} onClick={shareOnX}>
+              Post on X
             </button>
           </div>
 

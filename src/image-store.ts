@@ -130,3 +130,138 @@ export async function persistUploadedImage(input: PersistUploadedImageInput): Pr
 
   return Number(insert.rows[0]?.id ?? 0);
 }
+
+export type UploadedImageProofRecord = {
+  id: number;
+  createdAt: string;
+  userWalletAddress: string | null;
+  contentId: string;
+  contentHash: string;
+  action: string;
+  nullifierHash: string;
+  verificationLevel: string;
+  merkleRoot: string | null;
+  imageMimeType: string;
+  imageFileName: string | null;
+  imageSizeBytes: number;
+  imageBase64: string;
+  provenancePayload: unknown;
+  worldSignatureMessage: string;
+  worldSignatureB64: string;
+  worldSignaturePublicKeyPem: string;
+};
+
+type UploadedImageRow = {
+  id: string;
+  created_at: string;
+  user_wallet_address: string | null;
+  content_id: string;
+  content_hash: string;
+  action: string;
+  nullifier_hash: string;
+  verification_level: string;
+  merkle_root: string | null;
+  image_mime_type: string;
+  image_file_name: string | null;
+  image_size_bytes: number;
+  image_bytes: Buffer;
+  provenance_payload: unknown;
+};
+
+function mapUploadedImageRow(row: UploadedImageRow): UploadedImageProofRecord {
+  const payload = row.provenance_payload as {
+    world_signature?: {
+      message?: string;
+      signature_b64?: string;
+      public_key_pem?: string;
+    };
+  } | null;
+
+  return {
+    id: Number(row.id),
+    createdAt: row.created_at,
+    userWalletAddress: row.user_wallet_address,
+    contentId: row.content_id,
+    contentHash: row.content_hash,
+    action: row.action,
+    nullifierHash: row.nullifier_hash,
+    verificationLevel: row.verification_level,
+    merkleRoot: row.merkle_root,
+    imageMimeType: row.image_mime_type,
+    imageFileName: row.image_file_name,
+    imageSizeBytes: Number(row.image_size_bytes ?? 0),
+    imageBase64: Buffer.from(row.image_bytes).toString("base64"),
+    provenancePayload: row.provenance_payload,
+    worldSignatureMessage: String(payload?.world_signature?.message ?? ""),
+    worldSignatureB64: String(payload?.world_signature?.signature_b64 ?? ""),
+    worldSignaturePublicKeyPem: String(payload?.world_signature?.public_key_pem ?? ""),
+  };
+}
+
+export async function findUploadedImageByContentHash(contentHash: string): Promise<UploadedImageProofRecord | null> {
+  const normalized = String(contentHash ?? "").trim();
+  if (!normalized) return null;
+
+  const db = getPool();
+  await ensureSchema(db);
+  const res = await db.query<UploadedImageRow>(
+    `
+      SELECT
+        id,
+        created_at,
+        user_wallet_address,
+        content_id,
+        content_hash,
+        action,
+        nullifier_hash,
+        verification_level,
+        merkle_root,
+        image_mime_type,
+        image_file_name,
+        image_size_bytes,
+        image_bytes,
+        provenance_payload
+      FROM uploaded_images
+      WHERE content_hash = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [normalized],
+  );
+
+  if (!res.rows[0]) return null;
+  return mapUploadedImageRow(res.rows[0]);
+}
+
+export async function findUploadedImageById(id: number): Promise<UploadedImageProofRecord | null> {
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  const db = getPool();
+  await ensureSchema(db);
+  const res = await db.query<UploadedImageRow>(
+    `
+      SELECT
+        id,
+        created_at,
+        user_wallet_address,
+        content_id,
+        content_hash,
+        action,
+        nullifier_hash,
+        verification_level,
+        merkle_root,
+        image_mime_type,
+        image_file_name,
+        image_size_bytes,
+        image_bytes,
+        provenance_payload
+      FROM uploaded_images
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [id],
+  );
+
+  if (!res.rows[0]) return null;
+  return mapUploadedImageRow(res.rows[0]);
+}
