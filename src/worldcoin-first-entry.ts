@@ -11,8 +11,8 @@
  * Message format:    see canonicalMessage()
  *
  * Docs:
- *   Nullifier hash:  https://docs.world.org/world-id/concepts/nullifier-hash
- *   Verification:    https://docs.world.org/world-id/quick-start/cloud
+ *   Nullifier:        https://docs.world.org/world-id/concepts
+ *   Verify API:        https://docs.world.org/api-reference/developer-portal/verify
  */
 
 import { createHash, sign as cryptoSign, verify as cryptoVerify } from "node:crypto";

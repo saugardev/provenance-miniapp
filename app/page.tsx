@@ -55,9 +55,14 @@ async function sha256Hex(file: File): Promise<string> {
 
 // ---- component -------------------------------------------------------------
 
+/** Polling budget — must stay within RP signature TTL from /api/rp-signature (see ttl_seconds). */
+const LEGACY_POLL_MS = 900_000; // 15m — matches idkit-core pollUntilCompletion default; v3 proof gen is slow
+const V4_POLL_MS = 120_000; // 2m — v4 proofs are usually fast
+
 export default function Page() {
   const ACTION = (process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "upload-photo").trim();
   const APP_ID = (process.env.NEXT_PUBLIC_WORLDCOIN_APP_ID ?? "") as `app_${string}`;
+  const WC_ENV = process.env.NEXT_PUBLIC_WORLDCOIN_ENVIRONMENT;
 
   // image state
   const [file, setFile] = useState<File | null>(null);
@@ -142,10 +147,13 @@ export default function Page() {
 
       // Step 1 — fetch RP context from backend (signing key never leaves the server)
       setVerifyStatus("Fetching RP signature...");
+      const pollBudgetMs = mode === "legacy" ? LEGACY_POLL_MS : V4_POLL_MS;
+      const rpTtlSeconds = mode === "legacy" ? 900 : 300;
+
       const rpResp = await fetch("/api/rp-signature", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: ACTION }),
+        body: JSON.stringify({ action: ACTION, ttl_seconds: rpTtlSeconds }),
       });
       if (!rpResp.ok) {
         const err = await rpResp.json().catch(() => ({}));
@@ -170,6 +178,7 @@ export default function Page() {
           signature: rp.sig,
         },
         allow_legacy_proofs: mode === "legacy",
+        ...(WC_ENV === "staging" || WC_ENV === "production" ? { environment: WC_ENV } : {}),
       });
 
       // v3 (orbLegacy): returns IDKitResult with responses[0].merkle_root populated.
@@ -187,15 +196,19 @@ export default function Page() {
         setVerifyStatus("Approve the request in World App...");
       }
 
-      // Step 3 — poll for result with live status updates
-      const deadline = Date.now() + 90_000;
+      // Step 3 — poll for result with live status updates (orbLegacy can take many minutes)
+      const deadline = Date.now() + pollBudgetMs;
       let elapsed = 0;
 
       while (true) {
         if (Date.now() > deadline) {
+          const mins = Math.round(pollBudgetMs / 60_000);
           throw new Error(
-            "Timed out waiting for World App (90s). " +
-            "If you were recently orb-verified, your inclusion proof may still be pending on-chain — wait a few hours and try again.",
+            `Timed out waiting for World App (${mins} min). ` +
+              (mode === "legacy"
+                ? "v3 proofs are slow; if this keeps happening, try again or switch to v4. " +
+                  "If you just got orb-verified, inclusion can still be pending on-chain (up to ~24h)."
+                : "Try again or check your connection to World App."),
           );
         }
 

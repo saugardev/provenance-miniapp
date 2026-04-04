@@ -8,7 +8,7 @@
  * v3 note: orbLegacy results may omit the `action` field. We inject it from
  *   WORLDCOIN_ACTION env before forwarding, as the Developer API requires it.
  *
- * Docs: https://docs.world.org/world-id/quick-start/cloud#verifying-the-proof
+ * Docs: https://docs.world.org/api-reference/developer-portal/verify
  *
  * Request:  { idkitResponse: IDKitResult, rp_id?: string }  (or idkit_result as alias)
  * Response: { success: boolean, detail: unknown }

@@ -10,9 +10,10 @@
  *   The frontend calls this endpoint first, then passes the returned context
  *   to IDKit.request({ rp_context: ... }).
  *
- * Docs: https://docs.world.org/world-id/idkit/advanced#rp-context--request-signing
  *
- * Request:  { action: string }
+ * Request:  { action: string, ttl_seconds?: number }
+ *            ttl_seconds: RP signature lifetime (default 300). Clamped 300–900.
+ *            Use 900 for orbLegacy (v3) flows — proof generation can exceed 5 minutes.
  * Response: { sig, nonce, created_at, expires_at, rp_id }
  */
 
@@ -25,7 +26,8 @@ export const runtime = "nodejs";
 export async function POST(request: Request): Promise<Response> {
   console.log("[rp-signature] request received");
   try {
-    const { action } = await request.json().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
+    const { action, ttl_seconds: ttlRaw } = body as { action?: string; ttl_seconds?: number };
     if (!action) {
       console.warn("[rp-signature] missing action in request body");
       return NextResponse.json({ error: "action is required" }, { status: 400 });
@@ -38,9 +40,12 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const rpId = resolveWorldcoinRpId();
-    // signRequest(action, signingKey) → { sig, nonce, createdAt, expiresAt }
-    // sig is an HMAC-SHA256 over "action:nonce:createdAt" using the RP signing key
-    const { sig, nonce, createdAt, expiresAt } = signRequest(action, signingKey);
+    // signRequest(action, signingKey, ttlSeconds) — ECDSA over RP message (see @worldcoin/idkit-server)
+    const ttl =
+      Number.isFinite(ttlRaw) && ttlRaw! > 0
+        ? Math.min(900, Math.max(300, Math.floor(ttlRaw as number)))
+        : 300;
+    const { sig, nonce, createdAt, expiresAt } = signRequest(action, signingKey, ttl);
 
     console.log(`[rp-signature] signed action="${action}" rp_id="${rpId}" nonce="${nonce}" expires_at=${expiresAt}`);
     return NextResponse.json({

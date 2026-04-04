@@ -15,7 +15,7 @@
  *     For v4 proofs use the Next.js app instead.
  *
  * Docs:
- *   Cloud verification:  https://docs.world.org/world-id/quick-start/cloud
+ *   Verify API:          https://docs.world.org/api-reference/developer-portal/verify
  *   Verify endpoint:     POST https://developer.world.org/api/v4/verify/{rp_id}
  */
 
@@ -85,7 +85,7 @@ async function readJsonBody(req: IncomingMessage): Promise<any> {
 // The Next.js route uses verifyIdKitResponse() from lib/worldcoin-verify.ts
 // instead, which forwards the raw IDKitResult and handles both v3 and v4.
 //
-// Docs: https://docs.world.org/world-id/quick-start/cloud#verifying-the-proof
+// Docs: https://docs.world.org/api-reference/developer-portal/verify
 // ---------------------------------------------------------------------------
 
 async function verifyWorldcoinProofV3(input: {

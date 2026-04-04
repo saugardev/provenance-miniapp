@@ -10,8 +10,8 @@
  * Works for both v3 (orbLegacy, includes merkle_root) and v4 (merkle_root is empty).
  *
  * Docs:
- *   Cloud verification:  https://docs.world.org/world-id/quick-start/cloud
- *   Nullifier hash:      https://docs.world.org/world-id/concepts/nullifier-hash
+ *   Verify API:          https://docs.world.org/api-reference/developer-portal/verify
+ *   Nullifier (concepts): https://docs.world.org/world-id/concepts
  *
  * Request:
  *   {
