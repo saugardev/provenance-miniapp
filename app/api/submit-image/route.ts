@@ -73,21 +73,29 @@ export async function POST(req: Request) {
       verification_level = String(verification.parsed?.verification_level ?? verification_level).trim();
       nonce = String(verification.parsed?.nonce ?? nonce).trim();
 
-      // Some MiniKit payload variants omit nonce in the first candidate.
-      // If World explicitly asks for nonce and we have one from UI/fallback, retry once.
-      const nonceRequired =
+      // Some MiniKit payload variants omit required fields in the first candidate.
+      // If World explicitly asks for one of them and we can assemble a full payload, retry once.
+      const requiredAttribute = String((verification.detail as any)?.payload?.attribute ?? "");
+      const requiredFieldFailure =
         !verification.success &&
-        String((verification.detail as any)?.payload?.attribute ?? "") === "nonce" &&
+        (requiredAttribute === "nonce" || requiredAttribute === "action" || requiredAttribute === "signal") &&
         /required/i.test(String((verification.detail as any)?.payload?.detail ?? ""));
-      if (nonceRequired && nonce) {
+      const canRetryExplicit =
+        Boolean(action || "upload_photo") &&
+        Boolean(signal) &&
+        Boolean(proof) &&
+        Boolean(merkle_root) &&
+        Boolean(nullifier_hash) &&
+        Boolean(verification_level);
+      if (requiredFieldFailure && canRetryExplicit) {
         verification = await verifyWorldcoinProof({
-          action,
+          action: action || "upload_photo",
           signal,
           proof,
           merkle_root,
           nullifier_hash,
           verification_level,
-          nonce,
+          nonce: nonce || undefined,
         });
       }
     } else {
@@ -122,6 +130,15 @@ export async function POST(req: Request) {
         {
           error: "worldcoin proof verification failed",
           detail: verification.detail,
+          debug_verification_input: {
+            action: action || "upload_photo",
+            signal,
+            proof_present: Boolean(proof),
+            merkle_root_present: Boolean(merkle_root),
+            nullifier_hash_present: Boolean(nullifier_hash),
+            verification_level,
+            nonce_present: Boolean(nonce),
+          },
         },
         { status: 401 },
       );
