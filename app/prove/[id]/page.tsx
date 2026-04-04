@@ -3,7 +3,7 @@ import Link from "next/link";
 import { findUploadedImageById } from "../../../src/image-store.ts";
 
 type PageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 function baseUrl(): string {
@@ -11,9 +11,10 @@ function baseUrl(): string {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const id = Number(params.id);
+  const { id: rawId } = await params;
+  const id = Number(rawId);
   const record = await findUploadedImageById(id);
-  const url = `${baseUrl()}/prove/${params.id}`;
+  const url = `${baseUrl()}/prove/${rawId}`;
 
   if (!record) {
     return {
@@ -49,7 +50,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function ProveByIdPage({ params }: PageProps) {
-  const id = Number(params.id);
+  const { id: rawId } = await params;
+  const id = Number(rawId);
   const record = await findUploadedImageById(id);
 
   if (!record) {
