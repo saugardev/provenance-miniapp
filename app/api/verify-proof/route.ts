@@ -39,6 +39,8 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "idkitResponse or proof is required" }, { status: 400 });
     }
 
+    console.log("body", body, "miniAppProof", miniAppProof, "requestedRpId", requestedRpId, "idkitResponse", idkitResponse);
+
     if (isMiniAppProof(miniAppProof)) {
       const action =
         String(body?.action ?? process.env.WORLDCOIN_ACTION ?? process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "").trim() ||
