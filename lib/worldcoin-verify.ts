@@ -118,7 +118,7 @@ export async function verifyMiniAppProof(
     headers.authorization = `Bearer ${process.env.WORLDCOIN_API_KEY}`;
   }
 
-  const resp = await fetch(`${apiBase}/api/v2/verify/${appId}`, {
+  const resp = await fetch(`${apiBase}/api/v4/verify/${appId}`, {
     method: "POST",
     headers,
     body: JSON.stringify({
