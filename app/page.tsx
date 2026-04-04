@@ -175,7 +175,7 @@ export default function Page() {
       };
       setRpContext(nextRpContext);
       setWidgetOpen(true);
-      setVerifyStatus("Widget opened. Approve in World App...");
+      setVerifyStatus("");
       logClient("Opening IDKitRequestWidget", { rp_id: nextRpContext.rp_id });
     } catch (err) {
       logClient("Verification failed", String(err));
@@ -275,7 +275,9 @@ export default function Page() {
             onOpenChange={(open) => {
               setWidgetOpen(open);
               if (!open && !verifiedByBackend) {
-                setVerifyStatus("Widget closed.");
+                setVerifyStatus("");
+                setError("Verification window closed before completion.");
+                logClient("Widget closed before success");
               }
             }}
             app_id={APP_ID}
@@ -284,29 +286,41 @@ export default function Page() {
             allow_legacy_proofs={true}
             preset={orbLegacy({ signal: contentHash })}
             environment="production"
+            polling={{ interval: 2_000, timeout: 900_000 }}
+            autoClose={true}
             handleVerify={async (result) => {
               logClient("Widget returned proof, verifying on backend");
               setVerifyStatus("Verifying proof on backend...");
-              const verifyResp = await fetch("/api/verify-proof", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ rp_id: rpContext.rp_id, idkitResponse: result }),
-              });
-              const verifyJson = await verifyResp.json();
-              if (!verifyResp.ok || !verifyJson?.success) {
-                logClient("Backend verification failed", verifyJson?.detail ?? verifyJson);
-                throw new Error("Backend verification failed");
+              try {
+                const verifyResp = await fetch("/api/verify-proof", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ rp_id: rpContext.rp_id, idkitResponse: result }),
+                });
+                const verifyJson = await verifyResp.json();
+                if (!verifyResp.ok || !verifyJson?.success) {
+                  const detail = verifyJson?.detail ?? verifyJson;
+                  logClient("Backend verification failed", detail);
+                  setVerifyStatus("");
+                  setError(`Backend verification failed: ${JSON.stringify(detail)}`);
+                  throw new Error("Backend verification failed");
+                }
+                logClient("Backend verification succeeded", {
+                  session_id: verifyJson?.session_id,
+                  nullifier_hash: verifyJson?.nullifier_hash,
+                });
+              } catch (err) {
+                logClient("handleVerify exception", String(err));
+                setVerifyStatus("");
+                throw err;
               }
-              logClient("Backend verification succeeded", {
-                session_id: verifyJson?.session_id,
-                nullifier_hash: verifyJson?.nullifier_hash,
-              });
             }}
             onSuccess={(result) => {
               setIdkitResult(result);
               setVerifiedByBackend(true);
               setVerifyStatus("Verified.");
               setError("");
+              setWidgetOpen(false);
               logClient("Widget success", { protocol_version: (result as any)?.protocol_version ?? "unknown" });
             }}
             onError={(errorCode) => {
