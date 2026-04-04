@@ -59,7 +59,13 @@ export async function POST(req: Request) {
 
     let verification;
     if (body?.idkit_response) {
-      verification = await verifyIdKitResponseFlexible(body.idkit_response);
+      const raw = body.idkit_response as any;
+      const idkitWithHints = {
+        ...(raw && typeof raw === "object" ? raw : {}),
+        action: String(raw?.action ?? (action || "upload_photo")),
+        signal: String(raw?.signal ?? signal),
+      };
+      verification = await verifyIdKitResponseFlexible(idkitWithHints);
       action = String(verification.parsed?.action ?? action).trim();
       proof = String(verification.parsed?.proof ?? proof).trim();
       merkle_root = String(verification.parsed?.merkle_root ?? merkle_root).trim();
