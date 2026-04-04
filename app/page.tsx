@@ -27,10 +27,28 @@ function asVerificationLevel(value: string): VerificationLevel {
   return value as VerificationLevel;
 }
 
-function extractIdKitResponse(raw: any, action: string, signal: string, defaultLevel: string): any | null {
+function extractIdKitResponse(
+  raw: any,
+  action: string,
+  signal: string,
+  defaultLevel: string,
+  fallbackNonce?: string,
+): any | null {
   if (!raw || typeof raw !== "object") return null;
 
   if (Array.isArray(raw.responses) && raw.responses.length > 0) {
+    if (fallbackNonce && !raw.responses[0]?.nonce) {
+      return {
+        ...raw,
+        responses: [
+          {
+            ...raw.responses[0],
+            nonce: fallbackNonce,
+          },
+          ...raw.responses.slice(1),
+        ],
+      };
+    }
     return raw;
   }
 
@@ -45,7 +63,7 @@ function extractIdKitResponse(raw: any, action: string, signal: string, defaultL
           merkle_root: String(raw.merkle_root),
           nullifier: String(raw.nullifier_hash),
           identifier: String(raw.verification_level ?? defaultLevel),
-          nonce: String(raw.nonce ?? ""),
+          nonce: String(raw.nonce ?? fallbackNonce ?? ""),
         },
       ],
     };
@@ -146,17 +164,20 @@ export default function Page() {
         throw new Error("MiniKit verify API not found. Open this app inside World App Mini App context.");
       }
 
-      const out = await MiniKit.commandsAsync.verify({
+      const verifyInput: any = {
         action: proof.action.trim(),
         signal: contentHash,
         verification_level: asVerificationLevel(proof.verification_level.trim() || "orb"),
-      });
+        nonce: crypto.randomUUID(),
+      };
+      const out = await MiniKit.commandsAsync.verify(verifyInput);
 
       const anyOut = out as any;
       const payload = anyOut?.finalPayload ?? anyOut?.payload ?? anyOut ?? {};
+      const requestedNonce = String(anyOut?.nonce ?? payload?.nonce ?? "").trim() || crypto.randomUUID();
       const normalizedIdkit =
-        extractIdKitResponse(anyOut, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb") ??
-        extractIdKitResponse(payload, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb");
+        extractIdKitResponse(anyOut, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb", requestedNonce) ??
+        extractIdKitResponse(payload, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb", requestedNonce);
       if (!normalizedIdkit) {
         throw new Error("MiniKit response did not include a valid IDKit payload.");
       }
@@ -167,7 +188,7 @@ export default function Page() {
         proof: String(resp0?.proof ?? payload?.proof ?? ""),
         merkle_root: String(resp0?.merkle_root ?? payload?.merkle_root ?? ""),
         nullifier_hash: String(resp0?.nullifier ?? resp0?.nullifier_hash ?? payload?.nullifier_hash ?? ""),
-        nonce: String(resp0?.nonce ?? normalizedIdkit?.nonce ?? payload?.nonce ?? ""),
+        nonce: String(resp0?.nonce ?? normalizedIdkit?.nonce ?? payload?.nonce ?? requestedNonce ?? ""),
         verification_level: String(resp0?.identifier ?? payload?.verification_level ?? proof.verification_level),
         version:
           normalizedIdkit?.protocol_version != null
