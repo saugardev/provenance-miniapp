@@ -5,6 +5,7 @@ import { MiniKit, VerificationLevel, type MiniAppVerifyActionPayload } from "@wo
 import { Bebas_Neue, Manrope } from "next/font/google";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import styles from "./page.module.css";
 
 type RpSignatureResponse = {
@@ -117,6 +118,12 @@ export default function CapturePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const dragStartYRef = useRef(0);
+  const dragStartOffsetRef = useRef(0);
+  const draggingRef = useRef(false);
+  const draggedRef = useRef(false);
+  const overshootMaskTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [cameraReady, setCameraReady] = useState(false);
   const [busyCamera, setBusyCamera] = useState(false);
@@ -136,6 +143,10 @@ export default function CapturePage() {
   const [signedPayload, setSignedPayload] = useState<unknown>(null);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [denyStorageConsent, setDenyStorageConsent] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerDragOffset, setDrawerDragOffset] = useState<number | null>(null);
+  const [overshootMaskHeight, setOvershootMaskHeight] = useState(0);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -143,8 +154,82 @@ export default function CapturePage() {
     return () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       if (capture?.previewUrl) URL.revokeObjectURL(capture.previewUrl);
+      if (overshootMaskTimeoutRef.current) clearTimeout(overshootMaskTimeoutRef.current);
     };
   }, [capture?.previewUrl]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 860px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      if (window.scrollY > 40) {
+        setDrawerOpen(true);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  function getClosedDrawerOffset(): number {
+    const drawerEl = drawerRef.current;
+    if (!drawerEl) return 340;
+    return Math.max(0, drawerEl.offsetHeight - 86);
+  }
+
+  function applyElasticBounds(rawOffset: number, closedOffset: number): number {
+    if (rawOffset < 0) return rawOffset * 0.35;
+    if (rawOffset > closedOffset) return closedOffset + (rawOffset - closedOffset) * 0.35;
+    return rawOffset;
+  }
+
+  function onDrawerPointerDown(e: ReactPointerEvent<HTMLElement>) {
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    draggingRef.current = true;
+    draggedRef.current = false;
+    dragStartYRef.current = e.clientY;
+    dragStartOffsetRef.current = drawerOpen ? 0 : getClosedDrawerOffset();
+    setDrawerDragOffset(dragStartOffsetRef.current);
+  }
+
+  function onDrawerPointerMove(e: ReactPointerEvent<HTMLElement>) {
+    if (!draggingRef.current) return;
+    const closedOffset = getClosedDrawerOffset();
+    const deltaY = e.clientY - dragStartYRef.current;
+    const rawOffset = dragStartOffsetRef.current + deltaY;
+    if (Math.abs(deltaY) > 4) draggedRef.current = true;
+    setDrawerDragOffset(applyElasticBounds(rawOffset, closedOffset));
+  }
+
+  function onDrawerPointerEnd() {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    const closedOffset = getClosedDrawerOffset();
+    const finalOffset = drawerDragOffset ?? (drawerOpen ? 0 : closedOffset);
+    const releasedOvershoot = finalOffset < 0 ? Math.abs(finalOffset) : 0;
+    const clamped = Math.max(0, Math.min(closedOffset, finalOffset));
+    setDrawerOpen(clamped < closedOffset * 0.55);
+    setDrawerDragOffset(null);
+
+    if (overshootMaskTimeoutRef.current) clearTimeout(overshootMaskTimeoutRef.current);
+    if (releasedOvershoot > 0) {
+      setOvershootMaskHeight(Math.ceil(releasedOvershoot) + 2);
+      overshootMaskTimeoutRef.current = setTimeout(() => {
+        setOvershootMaskHeight(0);
+      }, 220);
+    } else {
+      setOvershootMaskHeight(0);
+    }
+  }
+
+  const topOvershoot = drawerDragOffset !== null && drawerDragOffset < 0 ? Math.abs(drawerDragOffset) : 0;
+  const underlayHeight = Math.max(topOvershoot > 0 ? Math.ceil(topOvershoot) + 2 : 0, overshootMaskHeight);
 
   async function openCameraWithPermissionCheck() {
     setBusyCamera(true);
@@ -227,6 +312,7 @@ export default function CapturePage() {
           captured_at_ms: capturedAtMs,
         },
       });
+      setDrawerOpen(true);
     } catch (err) {
       setError(`Capture failed: ${String(err)}`);
     } finally {
@@ -415,51 +501,91 @@ export default function CapturePage() {
         {capture ? <img src={capture.previewUrl} alt="Captured" className={styles.video} /> : null}
       </section>
 
-      <div className={styles.actions}>
-        <button className={styles.secondary} disabled={busyCamera || busyCapture} onClick={openCameraWithPermissionCheck}>
-          {busyCamera ? "Enabling..." : cameraReady ? "Re-open camera" : "Enable camera"}
-        </button>
-        <button className={styles.primary} disabled={!cameraReady || busyCapture} onClick={capturePhotoNow}>
-          {busyCapture ? "Capturing..." : "Capture image"}
-        </button>
-      </div>
+      <div className={styles.scrollPad} />
 
-      {capture ? (
-        <p className={styles.caption}>
-          Captured at {capture.capturedAtLabel} • GPS {capture.gps.latitude.toFixed(5)}, {capture.gps.longitude.toFixed(5)}
-        </p>
+      {underlayHeight > 0 ? (
+        <div
+          className={styles.drawerUnderlay}
+          style={{ height: `${underlayHeight}px` }}
+          aria-hidden="true"
+        />
       ) : null}
 
-      <div className={styles.actions}>
-        <button className={styles.primary} disabled={!capture || busyVerify} onClick={verifyHumanity}>
-          {busyVerify ? "Verifying..." : "Verify with World ID"}
+      <section
+        ref={drawerRef}
+        className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ""} ${drawerDragOffset !== null ? styles.drawerDragging : ""}`}
+        style={
+          drawerDragOffset !== null
+            ? { transform: isDesktop ? `translate(-50%, ${drawerDragOffset}px)` : `translateY(${drawerDragOffset}px)` }
+            : undefined
+        }
+      >
+        <button
+          className={styles.drawerHandle}
+          type="button"
+          onClick={() => {
+            if (draggedRef.current) return;
+            setDrawerOpen((v) => !v);
+          }}
+          onPointerDown={onDrawerPointerDown}
+          onPointerMove={onDrawerPointerMove}
+          onPointerUp={onDrawerPointerEnd}
+          onPointerCancel={onDrawerPointerEnd}
+        >
+          <span className={styles.drawerKnob} />
+          <span className={styles.drawerPeekText}>
+            {capture ? "Photo ready. Continue to prove." : "Scroll or tap to open controls"}
+          </span>
         </button>
-        <button className={styles.primary} disabled={!verifiedByBackend || busySign || !capture} onClick={proveHumanity}>
-          {busySign ? "Proving..." : "Prove humanity"}
-        </button>
-      </div>
 
-      {verifyStatus ? <p className={styles.caption}>{verifyStatus}</p> : null}
-      <p className={styles.caption}>Verification: {verifiedByBackend ? "Verified" : "Not verified"}</p>
-      <p className={styles.caption}>Signature: {signedPayload ? "Created" : "Not created"}</p>
+        <div className={styles.drawerBody}>
+          <div className={styles.actions}>
+            <button className={styles.secondary} disabled={busyCamera || busyCapture} onClick={openCameraWithPermissionCheck}>
+              {busyCamera ? "Enabling..." : cameraReady ? "Re-open camera" : "Enable camera"}
+            </button>
+            <button className={styles.primary} disabled={!cameraReady || busyCapture} onClick={capturePhotoNow}>
+              {busyCapture ? "Capturing..." : "Capture image"}
+            </button>
+          </div>
 
-      <label className={styles.consent}>
-        <input
-          type="checkbox"
-          checked={denyStorageConsent}
-          onChange={(e) => setDenyStorageConsent(e.target.checked)}
-        />
-        <span>I do not consent to storing this image for ETHGlobal purposes.</span>
-      </label>
+          {capture ? (
+            <p className={styles.caption}>
+              Captured at {capture.capturedAtLabel} • GPS {capture.gps.latitude.toFixed(5)}, {capture.gps.longitude.toFixed(5)}
+            </p>
+          ) : null}
 
-      <div className={styles.actions}>
-        <button className={styles.primary} disabled={!signedPayload || denyStorageConsent || busyUpload} onClick={uploadImage}>
-          {busyUpload ? "Uploading..." : "Upload image"}
-        </button>
-      </div>
+          <div className={styles.actions}>
+            <button className={styles.primary} disabled={!capture || busyVerify} onClick={verifyHumanity}>
+              {busyVerify ? "Verifying..." : "Verify with World ID"}
+            </button>
+            <button className={styles.primary} disabled={!verifiedByBackend || busySign || !capture} onClick={proveHumanity}>
+              {busySign ? "Proving..." : "Prove humanity"}
+            </button>
+          </div>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
-      {result ? <pre className={styles.result}>{JSON.stringify(result, null, 2)}</pre> : null}
+          {verifyStatus ? <p className={styles.caption}>{verifyStatus}</p> : null}
+          <p className={styles.caption}>Verification: {verifiedByBackend ? "Verified" : "Not verified"}</p>
+          <p className={styles.caption}>Signature: {signedPayload ? "Created" : "Not created"}</p>
+
+          <label className={styles.consent}>
+            <input
+              type="checkbox"
+              checked={denyStorageConsent}
+              onChange={(e) => setDenyStorageConsent(e.target.checked)}
+            />
+            <span>I do not consent to storing this image for ETHGlobal purposes.</span>
+          </label>
+
+          <div className={styles.actions}>
+            <button className={styles.primary} disabled={!signedPayload || denyStorageConsent || busyUpload} onClick={uploadImage}>
+              {busyUpload ? "Uploading..." : "Upload image"}
+            </button>
+          </div>
+
+          {error ? <p className={styles.error}>{error}</p> : null}
+          {result ? <pre className={styles.result}>{JSON.stringify(result, null, 2)}</pre> : null}
+        </div>
+      </section>
 
       {rpContext ? (
         <IDKitRequestWidget

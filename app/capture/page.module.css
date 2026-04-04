@@ -1,5 +1,5 @@
 .page {
-  min-height: 100dvh;
+  min-height: 120dvh;
   background:
     radial-gradient(1200px 540px at 100% -10%, rgba(212, 188, 146, 0.18) 0%, rgba(12, 12, 12, 0) 58%),
     radial-gradient(900px 500px at -10% 20%, rgba(151, 168, 192, 0.14) 0%, rgba(10, 10, 10, 0) 55%),
@@ -75,6 +75,10 @@
   gap: 10px;
 }
 
+.scrollPad {
+  height: 120px;
+}
+
 .primary,
 .secondary {
   border-radius: 999px;
@@ -136,6 +140,76 @@
   overflow: auto;
 }
 
+.drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  margin: 0 auto;
+  width: min(960px, 100%);
+  height: min(64dvh, 540px);
+  border-radius: 22px 22px 0 0;
+  border: 1px solid rgba(245, 243, 239, 0.24);
+  border-bottom: none;
+  background: rgba(21, 22, 24, 0.98);
+  backdrop-filter: blur(8px);
+  transform: translateY(calc(100% - 86px));
+  transition: transform 0.28s ease;
+}
+
+.drawerUnderlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 29;
+  margin: 0 auto;
+  width: min(960px, 100%);
+  background: rgba(21, 22, 24, 0.98);
+  pointer-events: none;
+}
+
+.drawerDragging {
+  transition: none;
+}
+
+.drawerOpen {
+  transform: translateY(0%);
+}
+
+.drawerHandle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: rgba(245, 243, 239, 0.86);
+  padding: 10px 16px 12px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  touch-action: none;
+}
+
+.drawerKnob {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(245, 243, 239, 0.38);
+}
+
+.drawerPeekText {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.drawerBody {
+  padding: 0 14px 20px;
+  overflow: auto;
+  max-height: calc(100% - 56px);
+}
+
 @media (min-width: 860px) {
   .page {
     max-width: 960px;
@@ -145,5 +219,15 @@
 
   .actions {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .drawer {
+    left: 50%;
+    right: auto;
+    transform: translate(-50%, calc(100% - 86px));
+  }
+
+  .drawerOpen {
+    transform: translate(-50%, 0%);
   }
 }
