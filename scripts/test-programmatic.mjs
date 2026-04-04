@@ -126,7 +126,7 @@ async function main() {
     const idkitResponse = {
       protocol_version: "3.0",
       nonce: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      action: "upload_photo",
+      action: "upload-photo",
       environment: "staging",
       responses: [
         {
@@ -175,7 +175,7 @@ async function main() {
       const sigResp = await fetch(`${BASE_URL}/api/rp-signature`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "upload_photo" }),
+        body: JSON.stringify({ action: "upload-photo" }),
       });
       const sigJson = await sigResp.json();
       assert(sigResp.status === 200, `rp-signature should be 200 with RP_SIGNING_KEY set, got ${sigResp.status}`);

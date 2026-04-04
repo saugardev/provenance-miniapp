@@ -61,7 +61,7 @@ export async function POST(req: Request) {
 
     let verification;
     if (body?.miniapp_payload) {
-      const actionForVerify = action || "upload_photo";
+      const actionForVerify = action || "upload-photo";
       const appIdRaw = String(process.env.APP_ID ?? process.env.WORLDCOIN_APP_ID ?? process.env.WORLDCOIN_RP_ID ?? "").trim();
       if (!appIdRaw.startsWith("app_")) {
         return NextResponse.json({ error: "APP_ID (app_...) is required for MiniKit cloud verification" }, { status: 500 });
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       const raw = body.idkit_response as any;
       const idkitWithHints = {
         ...(raw && typeof raw === "object" ? raw : {}),
-        action: String(raw?.action ?? (action || "upload_photo")),
+        action: String(raw?.action ?? (action || "upload-photo")),
         signal: String(raw?.signal ?? signal),
       };
       verification = await verifyIdKitResponseFlexible(idkitWithHints);
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
         (requiredAttribute === "nonce" || requiredAttribute === "action" || requiredAttribute === "signal") &&
         /required/i.test(String((verification.detail as any)?.payload?.detail ?? ""));
       const canRetryExplicit =
-        Boolean(action || "upload_photo") &&
+        Boolean(action || "upload-photo") &&
         Boolean(signal) &&
         Boolean(proof) &&
         Boolean(merkle_root) &&
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
         Boolean(verification_level);
       if (requiredFieldFailure && canRetryExplicit) {
         verification = await verifyWorldcoinProof({
-          action: action || "upload_photo",
+          action: action || "upload-photo",
           signal,
           proof,
           merkle_root,
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
           error: "worldcoin proof verification failed",
           detail: verification.detail,
           debug_verification_input: {
-            action: action || "upload_photo",
+            action: action || "upload-photo",
             signal,
             proof_present: Boolean(proof),
             merkle_root_present: Boolean(merkle_root),

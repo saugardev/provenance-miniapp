@@ -49,7 +49,7 @@ export default function Page() {
   const [contentId, setContentId] = useState("photo-001");
   const [contentHash, setContentHash] = useState("");
   const [proof, setProof] = useState<WorldProofInput>({
-    action: "upload_photo",
+    action: "upload-photo",
     signal: "",
     proof: "",
     merkle_root: "",
