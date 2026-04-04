@@ -82,6 +82,7 @@ async function sha256Hex(file: File): Promise<string> {
 export default function Page() {
   const ACTION = (process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "upload-photo").trim();
   const APP_ID = (process.env.NEXT_PUBLIC_WORLDCOIN_APP_ID ?? "") as `app_${string}`;
+  const USE_MINIKIT = process.env.NEXT_PUBLIC_WORLDCOIN_USE_MINIKIT === "true";
 
   // image state
   const [file, setFile] = useState<File | null>(null);
@@ -171,7 +172,10 @@ export default function Page() {
         throw new Error("NEXT_PUBLIC_WORLDCOIN_APP_ID is not set (must start with app_).");
       }
 
-      const isWorldApp = typeof window !== "undefined" && Boolean((window as Window & { WorldApp?: unknown }).WorldApp);
+      const isWorldApp =
+        USE_MINIKIT &&
+        typeof window !== "undefined" &&
+        Boolean((window as Window & { WorldApp?: unknown }).WorldApp);
       if (isWorldApp) {
         logClient("Starting verification", { mode: "minikit", action: ACTION });
         setVerifyStatus("Opening World App verification...");
