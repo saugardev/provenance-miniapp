@@ -43,6 +43,7 @@ export async function POST(request: Request): Promise<Response> {
       const action =
         String(body?.action ?? process.env.WORLDCOIN_ACTION ?? process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "").trim() ||
         "upload-photo";
+      console.log("action", action);
       const signal = String(body?.signal ?? "").trim();
       if (!signal) {
         console.warn("[verify-proof] missing signal for mini app proof");
