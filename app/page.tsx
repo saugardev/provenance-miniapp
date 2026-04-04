@@ -45,6 +45,16 @@ function idkitErrorMessage(code: string): string {
   return IDKIT_ERROR_MESSAGES[code] ?? `World ID error: ${code}`;
 }
 
+function formatLogMeta(meta: unknown): string {
+  if (meta === undefined) return "";
+  if (typeof meta === "string") return meta;
+  try {
+    return JSON.stringify(meta);
+  } catch {
+    return String(meta);
+  }
+}
+
 async function sha256Hex(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", buf);
@@ -88,11 +98,25 @@ export default function Page() {
 
   // shared error
   const [error, setError] = useState("");
+  const [clientLogs, setClientLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(true);
 
   const hashPreview = useMemo(() => {
     if (!contentHash) return "";
     return contentHash.length > 36 ? `${contentHash.slice(0, 24)}...${contentHash.slice(-10)}` : contentHash;
   }, [contentHash]);
+
+  function logClient(message: string, meta?: unknown) {
+    const stamp = new Date().toISOString();
+    const suffix = formatLogMeta(meta);
+    const line = suffix ? `[${stamp}] ${message} ${suffix}` : `[${stamp}] ${message}`;
+    console.log(`[miniapp] ${message}`, meta ?? "");
+    setClientLogs((prev) => {
+      const next = prev.length >= 300 ? prev.slice(prev.length - 299) : prev.slice();
+      next.push(line);
+      return next;
+    });
+  }
 
   // ---- handlers ------------------------------------------------------------
 
@@ -128,6 +152,7 @@ export default function Page() {
     setSubmitResult(null);
     setVerifyStatus("");
     setConnectorURI("");
+    logClient("Switched mode", { mode: next });
   }
 
   async function verify() {
@@ -138,6 +163,7 @@ export default function Page() {
     setVerifiedByBackend(false);
 
     try {
+      logClient("Starting verification", { mode, action: ACTION });
       if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
         throw new Error("Select an image first — the signal is bound to the content hash.");
       }
@@ -149,6 +175,7 @@ export default function Page() {
       setVerifyStatus("Fetching RP signature...");
       const pollBudgetMs = mode === "legacy" ? LEGACY_POLL_MS : V4_POLL_MS;
       const rpTtlSeconds = mode === "legacy" ? 900 : 300;
+      logClient("Fetching RP signature", { pollBudgetMs, rpTtlSeconds });
 
       const rpResp = await fetch("/api/rp-signature", {
         method: "POST",
@@ -160,8 +187,10 @@ export default function Page() {
         throw new Error(`RP signature failed: ${JSON.stringify(err)}`);
       }
       const rp = (await rpResp.json()) as RpSignatureResponse;
+      logClient("RP signature received", { rp_id: rp.rp_id, expires_at: rp.expires_at });
 
       setVerifyStatus("Connecting to World App...");
+      logClient("Building IDKit request");
 
       // Step 2 — create IDKit request
       // signal is bound to the image hash so the proof is cryptographically tied to this content.
@@ -192,37 +221,57 @@ export default function Page() {
       if (request.connectorURI) {
         setConnectorURI(request.connectorURI);
         setVerifyStatus("Open World App to approve...");
+        logClient("Connector URI available (web bridge/QR)");
       } else {
         setVerifyStatus("Approve the request in World App...");
+        logClient("Running inside World App (no connector URI)");
       }
 
-      // Step 3 — wait for a terminal result using IDKit's completion API
-      setVerifyStatus("Waiting for World App confirmation...");
-      const completion = await request.pollUntilCompletion({
-        pollInterval: 2_000,
-        timeout: pollBudgetMs,
-      });
-      if (!completion.success) {
-        if (completion.error === IDKitErrorCodes.Timeout) {
-          const mins = Math.round(pollBudgetMs / 60_000);
-          throw new Error(
-            `Timed out waiting for World App (${mins} min). ` +
-              (mode === "legacy"
-                ? "v3 proofs are slow; if this keeps happening, try again or switch to v4. " +
-                  "If you just got orb-verified, inclusion can still be pending on-chain (up to ~24h)."
-                : "Try again or check your connection to World App."),
-          );
+      // Step 3 — manual polling so we can show precise progress in the mini app.
+      const pollEveryMs = 2_000;
+      const deadline = Date.now() + pollBudgetMs;
+      let idResult: IDKitResult | null = null;
+      let lastStatus = "";
+      while (!idResult) {
+        if (Date.now() > deadline) {
+          throw new Error(idkitErrorMessage(IDKitErrorCodes.Timeout));
         }
-        if (completion.error === IDKitErrorCodes.Cancelled) {
-          throw new Error("Verification was cancelled in World App.");
-        }
-        throw new Error(idkitErrorMessage(completion.error));
-      }
 
-      const idResult = completion.result;
+        const status = await request.pollOnce();
+        const elapsedSec = Math.floor((pollBudgetMs - (deadline - Date.now())) / 1000);
+
+        if (status.type === "waiting_for_connection") {
+          if (lastStatus !== status.type) {
+            setVerifyStatus("Waiting for World App to connect...");
+            logClient("Poll status", { type: status.type });
+            lastStatus = status.type;
+          }
+        } else if (status.type === "awaiting_confirmation") {
+          setConnectorURI("");
+          setVerifyStatus(`Generating ZK proof in World App... (${elapsedSec}s)`);
+          if (lastStatus !== status.type || elapsedSec % 10 === 0) {
+            logClient("Poll status", { type: status.type, elapsedSec });
+          }
+          lastStatus = status.type;
+        } else if (status.type === "confirmed") {
+          if (!status.result) {
+            throw new Error(idkitErrorMessage(IDKitErrorCodes.UnexpectedResponse));
+          }
+          logClient("Poll status", { type: status.type });
+          idResult = status.result;
+        } else {
+          throw new Error(idkitErrorMessage(status.error ?? IDKitErrorCodes.GenericError));
+        }
+
+        if (!idResult) {
+          await new Promise((r) => setTimeout(r, pollEveryMs));
+        }
+      }
+      logClient("Proof captured", { protocol_version: (idResult as any)?.protocol_version ?? "unknown" });
 
       // Step 4 — verify proof on backend
       setVerifyStatus("Verifying proof on backend...");
+      logClient("Sending proof to backend verify");
       const verifyResp = await fetch("/api/verify-proof", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -232,12 +281,17 @@ export default function Page() {
       if (!verifyResp.ok || !verifyJson?.success) {
         throw new Error(`Backend verification failed: ${JSON.stringify(verifyJson?.detail ?? verifyJson)}`);
       }
+      logClient("Backend verification succeeded", {
+        session_id: verifyJson?.session_id,
+        nullifier_hash: verifyJson?.nullifier_hash,
+      });
 
       setIdkitResult(idResult);
       setVerifiedByBackend(true);
       setVerifyStatus("");
       setConnectorURI("");
     } catch (err) {
+      logClient("Verification failed", String(err));
       setError(String(err));
       setVerifyStatus("");
       setConnectorURI("");
@@ -371,6 +425,23 @@ export default function Page() {
             <pre>{JSON.stringify(submitResult, null, 2)}</pre>
           </div>
         ) : null}
+
+        <div className="result">
+          <div className="log-toolbar">
+            <h2>Mini App Logs</h2>
+            <div>
+              <button className="button secondary" type="button" onClick={() => setShowLogs((v) => !v)}>
+                {showLogs ? "Hide Logs" : "Show Logs"}
+              </button>
+              <button className="button secondary" type="button" onClick={() => setClientLogs([])}>
+                Clear
+              </button>
+            </div>
+          </div>
+          {showLogs ? (
+            <pre className="log-pre">{clientLogs.length ? clientLogs.join("\n") : "No logs yet."}</pre>
+          ) : null}
+        </div>
       </section>
     </main>
   );
