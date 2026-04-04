@@ -63,7 +63,7 @@ export default function HomePage() {
           <p className={styles.heroSubtitle}>
             Prove your photos are real and defend yourself from AI
           </p>
-          <Link href="/verify" className={styles.heroCta}>
+          <Link href="/capture" className={styles.heroCta}>
             Prove humanity
           </Link>
           <p className={styles.heroTerms}>
