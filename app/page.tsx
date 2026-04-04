@@ -215,7 +215,7 @@ export default function Page() {
           const verifyResp = await fetch("/api/verify-proof", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ idkitResponse: idResult }),
+            body: JSON.stringify({ rp_id: rp.rp_id, idkitResponse: idResult }),
           });
           const verifyJson = await verifyResp.json();
           if (!verifyResp.ok || !verifyJson?.success) {

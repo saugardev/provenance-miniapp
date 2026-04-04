@@ -14,8 +14,6 @@
  *
  * Docs:
  *   Integrate IDKit:     https://docs.world.org/world-id/idkit/integrate
- *   Cloud verification:  https://docs.world.org/world-id/quick-start/cloud
- *   RP (Relying Party):  https://docs.world.org/world-id/idkit/advanced
  */
 
 // ---------------------------------------------------------------------------
@@ -51,7 +49,6 @@ export function resolveWorldcoinRpId(): string {
  * Forwards the raw IDKitResult to the World ID verify API and returns success/failure.
  *
  * "Forward the IDKit result payload as-is. No field remapping is required."
- * — https://docs.world.org/world-id/quick-start/cloud#verifying-the-proof
  *
  * Works for both v3 (orbLegacy) and v4 proofs.
  * For v3, the caller must inject `action` into the payload before calling this

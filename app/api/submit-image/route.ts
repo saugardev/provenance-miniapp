@@ -26,7 +26,7 @@ import { NextResponse } from "next/server";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
-import { appendSubmission, loadState, saveState } from "../../../src/state.ts";
+import { appendSubmission, hasSubmissionForNullifierAction, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
 import { verifyIdKitResponse, extractIdkitFields } from "../../../lib/worldcoin-verify";
 
@@ -92,9 +92,29 @@ export async function POST(req: Request) {
     // verificationLevel — e.g. "orb".
     const { nullifier, verificationLevel, merkleRoot } = extractIdkitFields(idkitPayload);
     console.log(`[submit-image] nullifier="${nullifier}" verificationLevel="${verificationLevel}" merkleRoot="${merkleRoot || "(none, v4)"}"`);
+    if (!nullifier) {
+      console.warn("[submit-image] verified payload missing nullifier");
+      return NextResponse.json(
+        { error: "Verified IDKit payload is missing nullifier" },
+        { status: 400 },
+      );
+    }
 
     // --- Step 3: Build and sign the Livy provenance payload ---
     const dataDir = resolve(process.cwd(), "state");
+    const statePath = resolve(dataDir, "backend-state.json");
+    const state = loadState(statePath);
+
+    // Replay protection (World docs Step 6):
+    // reject if this (nullifier, action) pair has already been submitted.
+    if (hasSubmissionForNullifierAction(state, nullifier, action)) {
+      console.warn(`[submit-image] duplicate nullifier replay blocked nullifier="${nullifier}" action="${action}"`);
+      return NextResponse.json(
+        { error: "This World ID has already submitted for this action (duplicate nullifier)." },
+        { status: 409 },
+      );
+    }
+
     const keyMaterial = loadOrCreateKeyMaterial(
       resolve(dataDir, "signing_private_key.pem"),
       resolve(dataDir, "signing_public_key.pem"),
@@ -118,7 +138,7 @@ export async function POST(req: Request) {
 
     // --- Step 4: Persist ---
     mkdirSync(dataDir, { recursive: true });
-    saveState(resolve(dataDir, "backend-state.json"), appendSubmission(loadState(resolve(dataDir, "backend-state.json")), payload));
+    saveState(statePath, appendSubmission(state, payload));
     writeFileSync(resolve(dataDir, "latest-worldcoin-first-entry.json"), JSON.stringify(payload, null, 2), "utf8");
 
     console.log(`[submit-image] ✓ payload built and persisted signature="${payload.signature.slice(0, 16)}..."`);

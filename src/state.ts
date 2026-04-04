@@ -34,3 +34,26 @@ export function appendSubmission(state: BackendState, payload: WorldcoinFirstEnt
   submissions.push({ submitted_at_ms: Date.now(), payload });
   return { ...state, submissions };
 }
+
+/**
+ * Returns true when a submission already exists for the same (nullifier, action).
+ * World ID nullifiers are unique per (user, action), so reusing the same pair
+ * should be rejected to prevent replay.
+ */
+export function hasSubmissionForNullifierAction(
+  state: BackendState,
+  nullifierHash: string,
+  action: string,
+): boolean {
+  const normalizedNullifier = String(nullifierHash ?? "").trim();
+  const normalizedAction = String(action ?? "").trim();
+  if (!normalizedNullifier || !normalizedAction) return false;
+
+  return state.submissions.some((submission) => {
+    const proof = submission?.payload?.worldcoin_proof;
+    return (
+      String(proof?.nullifier_hash ?? "").trim() === normalizedNullifier
+      && String(proof?.action ?? "").trim() === normalizedAction
+    );
+  });
+}
