@@ -1,6 +1,6 @@
 "use client";
 
-import { IDKit, orbLegacy, type IDKitResult } from "@worldcoin/idkit";
+import { IDKit, orbLegacy, IDKitErrorCodes, type IDKitResult } from "@worldcoin/idkit";
 import { ChangeEvent, useMemo, useState } from "react";
 
 type SubmitResponse = {
@@ -24,6 +24,28 @@ type RpSignatureResponse = {
   expires_at: number;
   rp_id: string;
 };
+
+const IDKIT_ERROR_MESSAGES: Record<string, string> = {
+  [IDKitErrorCodes.InclusionProofPending]:
+    "Your orb verification is still being processed on-chain (can take up to 24h after orb scan). Try again later.",
+  [IDKitErrorCodes.InclusionProofFailed]:
+    "Inclusion proof check failed. Your verification may not have been registered yet.",
+  [IDKitErrorCodes.CredentialUnavailable]:
+    "No matching World ID credential found. Make sure you are orb-verified.",
+  [IDKitErrorCodes.UserRejected]: "You rejected the verification in World App.",
+  [IDKitErrorCodes.VerificationRejected]: "Verification was rejected by World App.",
+  [IDKitErrorCodes.MaxVerificationsReached]:
+    "You have already verified this action the maximum number of times.",
+  [IDKitErrorCodes.ConnectionFailed]:
+    "Could not connect to World App. Make sure you are inside the World App mini app.",
+  [IDKitErrorCodes.Timeout]: "Verification timed out. Please try again.",
+  [IDKitErrorCodes.Cancelled]: "Verification was cancelled.",
+  [IDKitErrorCodes.GenericError]: "An unexpected error occurred in World App.",
+};
+
+function idkitErrorMessage(code: string): string {
+  return IDKIT_ERROR_MESSAGES[code] ?? `World ID error: ${code}`;
+}
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
@@ -50,6 +72,7 @@ export default function Page() {
   const [busySubmit, setBusySubmit] = useState(false);
   const [busyWorldVerify, setBusyWorldVerify] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState("");
+  const [connectorURI, setConnectorURI] = useState("");
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState("");
 
@@ -88,6 +111,7 @@ export default function Page() {
     setBusyWorldVerify(true);
     setVerifyStatus("Requesting RP signature...");
     setError("");
+    setConnectorURI("");
     setIdkitResult(null);
     setVerifiedByBackend(false);
     try {
@@ -110,7 +134,7 @@ export default function Page() {
       }
       const rpData = (await rpResp.json()) as RpSignatureResponse;
 
-      setVerifyStatus("Waiting for World App...");
+      setVerifyStatus("Connecting to World App...");
 
       // 2. Create IDKit request with RP context
       const request = await IDKit.request({
@@ -126,25 +150,34 @@ export default function Page() {
         allow_legacy_proofs: true,
       }).preset(orbLegacy({ signal: contentHash }));
 
+      // connectorURI is empty when inside World App (postMessage mode)
+      // non-empty means web/bridge mode — show link so user can open in World App
+      const inApp = !request.connectorURI;
+      if (!inApp) {
+        setConnectorURI(request.connectorURI);
+        setVerifyStatus("Open this link in World App to continue...");
+      } else {
+        setVerifyStatus("Approve the request in World App...");
+      }
+
       // 3. Poll with status updates so the user can see progress
       let completion;
       while (true) {
         const status = await request.pollOnce();
         if (status.type === "waiting_for_connection") {
-          setVerifyStatus("Open World App to approve...");
+          setVerifyStatus(inApp ? "Approve the request in World App..." : "Waiting for World App to connect...");
         } else if (status.type === "awaiting_confirmation") {
-          setVerifyStatus("Generating proof (this takes ~30-60s)...");
+          setVerifyStatus("Generating ZK proof in World App (30–60s)...");
+          setConnectorURI(""); // clear QR once user is in World App
         } else if (status.type === "confirmed") {
           completion = { success: true as const, result: status.result! };
           break;
         } else {
-          completion = { success: false as const, error: status.error! };
-          break;
+          // status.type === "failed"
+          const code = status.error ?? IDKitErrorCodes.GenericError;
+          throw new Error(idkitErrorMessage(code));
         }
         await new Promise((r) => setTimeout(r, 1000));
-      }
-      if (!completion.success) {
-        throw new Error(`World ID verification failed: ${completion.error}`);
       }
       const idResult = completion.result;
 
@@ -167,9 +200,11 @@ export default function Page() {
       setIdkitResult(idResult);
       setVerifiedByBackend(true);
       setVerifyStatus("");
+      setConnectorURI("");
     } catch (err) {
-      setError(`World verify failed: ${String(err)}`);
+      setError(String(err));
       setVerifyStatus("");
+      setConnectorURI("");
     } finally {
       setBusyWorldVerify(false);
     }
@@ -251,9 +286,15 @@ export default function Page() {
         <button className="button secondary" disabled={busyWorldVerify} onClick={fillFromIDKit}>
           {busyWorldVerify ? "Verifying..." : "Verify with World ID"}
         </button>
-        {verifyStatus ? <p className="hint">{verifyStatus}</p> : null}
-        <p className="hint">IDKit result: {idkitResult ? `captured (protocol ${(idkitResult as any).protocol_version})` : "not captured yet"}</p>
-        <p className="hint">Backend verify: {verifiedByBackend ? "success" : "pending"}</p>
+        {verifyStatus ? <p className="hint">⏳ {verifyStatus}</p> : null}
+        {connectorURI ? (
+          <div className="result">
+            <p className="hint">Not inside World App — open this link on your phone:</p>
+            <a href={connectorURI} style={{ wordBreak: "break-all", fontSize: "0.75rem" }}>{connectorURI}</a>
+          </div>
+        ) : null}
+        <p className="hint">IDKit result: {idkitResult ? `✅ captured (protocol ${(idkitResult as any).protocol_version})` : "not captured yet"}</p>
+        <p className="hint">Backend verify: {verifiedByBackend ? "✅ success" : "pending"}</p>
 
         <button className="button" disabled={busySubmit} onClick={submit}>
           {busySubmit ? "Submitting..." : "Verify + Sign"}
