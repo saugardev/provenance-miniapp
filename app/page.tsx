@@ -65,10 +65,6 @@ async function sha256Hex(file: File): Promise<string> {
 
 // ---- component -------------------------------------------------------------
 
-/** Polling budget — must stay within RP signature TTL from /api/rp-signature (see ttl_seconds). */
-const LEGACY_POLL_MS = 900_000; // 15m — matches idkit-core pollUntilCompletion default; v3 proof gen is slow
-const V4_POLL_MS = 120_000; // 2m — v4 proofs are usually fast
-
 export default function Page() {
   const ACTION = (process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "upload-photo").trim();
   const APP_ID = (process.env.NEXT_PUBLIC_WORLDCOIN_APP_ID ?? "") as `app_${string}`;
@@ -173,9 +169,9 @@ export default function Page() {
 
       // Step 1 — fetch RP context from backend (signing key never leaves the server)
       setVerifyStatus("Fetching RP signature...");
-      const pollBudgetMs = mode === "legacy" ? LEGACY_POLL_MS : V4_POLL_MS;
+      const verifyTimeoutMs = 120_000;
       const rpTtlSeconds = mode === "legacy" ? 900 : 300;
-      logClient("Fetching RP signature", { pollBudgetMs, rpTtlSeconds });
+      logClient("Fetching RP signature", { verifyTimeoutMs, rpTtlSeconds });
 
       const rpResp = await fetch("/api/rp-signature", {
         method: "POST",
@@ -227,46 +223,22 @@ export default function Page() {
         logClient("Running inside World App (no connector URI)");
       }
 
-      // Step 3 — manual polling so we can show precise progress in the mini app.
-      const pollEveryMs = 2_000;
-      const deadline = Date.now() + pollBudgetMs;
-      let idResult: IDKitResult | null = null;
-      let lastStatus = "";
-      while (!idResult) {
-        if (Date.now() > deadline) {
+      // Step 3 — use IDKit completion API (no manual pollOnce loop)
+      setVerifyStatus("Waiting for World App confirmation...");
+      const completion = await request.pollUntilCompletion({
+        pollInterval: 2_000,
+        timeout: verifyTimeoutMs,
+      });
+      if (!completion.success) {
+        if (completion.error === IDKitErrorCodes.Timeout) {
           throw new Error(idkitErrorMessage(IDKitErrorCodes.Timeout));
         }
-
-        const status = await request.pollOnce();
-        const elapsedSec = Math.floor((pollBudgetMs - (deadline - Date.now())) / 1000);
-
-        if (status.type === "waiting_for_connection") {
-          if (lastStatus !== status.type) {
-            setVerifyStatus("Waiting for World App to connect...");
-            logClient("Poll status", { type: status.type });
-            lastStatus = status.type;
-          }
-        } else if (status.type === "awaiting_confirmation") {
-          setConnectorURI("");
-          setVerifyStatus(`Generating ZK proof in World App... (${elapsedSec}s)`);
-          if (lastStatus !== status.type || elapsedSec % 10 === 0) {
-            logClient("Poll status", { type: status.type, elapsedSec });
-          }
-          lastStatus = status.type;
-        } else if (status.type === "confirmed") {
-          if (!status.result) {
-            throw new Error(idkitErrorMessage(IDKitErrorCodes.UnexpectedResponse));
-          }
-          logClient("Poll status", { type: status.type });
-          idResult = status.result;
-        } else {
-          throw new Error(idkitErrorMessage(status.error ?? IDKitErrorCodes.GenericError));
+        if (completion.error === IDKitErrorCodes.Cancelled) {
+          throw new Error("Verification was cancelled in World App.");
         }
-
-        if (!idResult) {
-          await new Promise((r) => setTimeout(r, pollEveryMs));
-        }
+        throw new Error(idkitErrorMessage(completion.error));
       }
+      const idResult = completion.result;
       logClient("Proof captured", { protocol_version: (idResult as any)?.protocol_version ?? "unknown" });
 
       // Step 4 — verify proof on backend
