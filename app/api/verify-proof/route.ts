@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyIdKitResponse } from "../../../lib/worldcoin-verify";
+import { verifyIdKitResponseFlexible } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,7 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "idkitResponse is required" }, { status: 400 });
     }
 
-    const verification = await verifyIdKitResponse(body.idkitResponse);
+    const verification = await verifyIdKitResponseFlexible(body.idkitResponse);
     const status = verification.success ? 200 : 401;
     return NextResponse.json(
       {
@@ -22,6 +22,8 @@ export async function POST(request: Request): Promise<Response> {
         environment: verification.environment,
         session_id: verification.session_id,
         detail: verification.detail,
+        used_payload: verification.used_payload,
+        parsed: verification.parsed,
       },
       { status },
     );

@@ -23,6 +23,12 @@ type SubmitResponse = {
   detail?: unknown;
 };
 
+type VerifyProofResponse = {
+  success: boolean;
+  detail?: unknown;
+  used_payload?: unknown;
+};
+
 function asVerificationLevel(value: string): VerificationLevel {
   return value as VerificationLevel;
 }
@@ -105,6 +111,7 @@ export default function Page() {
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState("");
   const [idkitResponse, setIdkitResponse] = useState<any | null>(null);
+  const [verifiedByBackend, setVerifiedByBackend] = useState(false);
 
   const hashPreview = useMemo(() => {
     if (!contentHash) return "";
@@ -123,6 +130,7 @@ export default function Page() {
   useEffect(() => {
     setProof((prev) => ({ ...prev, signal: contentHash }));
     setIdkitResponse(null);
+    setVerifiedByBackend(false);
   }, [contentHash]);
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -181,7 +189,17 @@ export default function Page() {
       if (!normalizedIdkit) {
         throw new Error("MiniKit response did not include a valid IDKit payload.");
       }
-      setIdkitResponse(anyOut);
+      const verifyResp = await fetch("/api/verify-proof", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idkitResponse: anyOut }),
+      });
+      const verifyJson = (await verifyResp.json()) as VerifyProofResponse;
+      if (!verifyResp.ok || !verifyJson?.success) {
+        throw new Error(`Backend verify failed: ${JSON.stringify(verifyJson?.detail ?? verifyJson)}`);
+      }
+      setIdkitResponse(verifyJson.used_payload ?? anyOut);
+      setVerifiedByBackend(true);
 
       const resp0 = Array.isArray(normalizedIdkit?.responses) ? normalizedIdkit.responses[0] : undefined;
       const nextProof = {
@@ -208,6 +226,7 @@ export default function Page() {
       }));
     } catch (err) {
       setError(`World verify failed: ${String(err)}`);
+      setVerifiedByBackend(false);
     } finally {
       setBusyWorldVerify(false);
     }
@@ -221,6 +240,9 @@ export default function Page() {
       if (!contentId.trim()) throw new Error("content_id is required");
       if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
         throw new Error("content_hash must be sha256:<64-hex>. Select an image first.");
+      }
+      if (!verifiedByBackend || !idkitResponse) {
+        throw new Error("Run 'Try World MiniKit Verify' first and get a successful backend verification.");
       }
 
       const body = {
@@ -333,6 +355,7 @@ export default function Page() {
         </button>
         <p className="hint">MiniKit: {miniKitReady ? "installed" : "not detected (open in World App)"}</p>
         <p className="hint">IDKit payload: {idkitResponse ? "captured" : "not captured yet"}</p>
+        <p className="hint">Backend verify: {verifiedByBackend ? "success" : "pending"}</p>
 
         <button className="button" disabled={busySubmit} onClick={submit}>
           {busySubmit ? "Submitting..." : "Verify + Sign"}
