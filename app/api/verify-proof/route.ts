@@ -15,9 +15,10 @@ export async function POST(request: Request): Promise<Response> {
     if (!body?.payload) {
       return NextResponse.json({ error: "payload is required" }, { status: 400 });
     }
-    const action = String(body?.action ?? "").trim();
+    const configuredAction = String(process.env.WORLDCOIN_ACTION ?? "").trim();
+    const action = String(body?.action ?? configuredAction).trim();
     if (!action) {
-      return NextResponse.json({ error: "action is required" }, { status: 400 });
+      return NextResponse.json({ error: "action is required (set WORLDCOIN_ACTION or send action)" }, { status: 400 });
     }
     const signal = body?.signal ? String(body.signal).trim() : undefined;
     const appIdRaw = String(process.env.APP_ID ?? process.env.WORLDCOIN_APP_ID ?? process.env.WORLDCOIN_RP_ID ?? "").trim();
@@ -31,6 +32,8 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json(
       {
         success: verifyRes.success,
+        action,
+        app_id: appId,
         detail: verifyRes,
       },
       { status },

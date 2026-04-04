@@ -45,11 +45,12 @@ async function sha256Hex(file: File): Promise<string> {
 }
 
 export default function Page() {
+  const configuredAction = (process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "upload-photo").trim();
   const [file, setFile] = useState<File | null>(null);
   const [contentId, setContentId] = useState("photo-001");
   const [contentHash, setContentHash] = useState("");
   const [proof, setProof] = useState<WorldProofInput>({
-    action: "upload-photo",
+    action: configuredAction,
     signal: "",
     proof: "",
     merkle_root: "",
@@ -127,7 +128,7 @@ export default function Page() {
       }
 
       const verifyInput: any = {
-        action: proof.action.trim(),
+        action: configuredAction,
         signal: contentHash,
         verification_level: asVerificationLevel(proof.verification_level.trim() || "orb"),
         nonce: crypto.randomUUID(),
@@ -145,7 +146,7 @@ export default function Page() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           payload,
-          action: proof.action.trim(),
+          action: configuredAction,
           signal: contentHash,
         }),
       });
@@ -201,7 +202,7 @@ export default function Page() {
         timestamp_ms: Date.now(),
         miniapp_payload: idkitResponse ?? undefined,
         worldcoin_proof: {
-          action: proof.action.trim(),
+          action: configuredAction,
           signal: contentHash,
           proof: proof.proof.trim(),
           merkle_root: proof.merkle_root.trim(),
@@ -257,7 +258,7 @@ export default function Page() {
         <div className="row two">
           <label className="field">
             <span>action</span>
-            <input value={proof.action} onChange={(e) => updateProof("action", e.target.value)} />
+            <input value={configuredAction} readOnly />
           </label>
           <label className="field">
             <span>signal (bound to image hash)</span>
