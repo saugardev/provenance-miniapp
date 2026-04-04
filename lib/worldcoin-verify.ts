@@ -57,6 +57,7 @@ export async function verifyWorldcoinProof(input: VerifyWorldcoinInput): Promise
       action: input.action,
       signal: input.signal,
       protocol_version: "3.0",
+      nonce: input.nonce,
       responses: [
         {
           protocol_version: "3.0",
@@ -64,7 +65,6 @@ export async function verifyWorldcoinProof(input: VerifyWorldcoinInput): Promise
           merkle_root: input.merkle_root,
           nullifier: input.nullifier_hash,
           identifier: input.verification_level,
-          nonce: input.nonce,
         },
       ],
     }),
@@ -156,6 +156,7 @@ function normalizeParsedToIdkitResponse(parsed: ParsedLike): unknown {
     action: parsed.action,
     signal: parsed.signal,
     protocol_version: "3.0",
+    nonce: parsed.nonce,
     responses: [
       {
         protocol_version: "3.0",
@@ -163,7 +164,6 @@ function normalizeParsedToIdkitResponse(parsed: ParsedLike): unknown {
         merkle_root: parsed.merkle_root,
         nullifier: parsed.nullifier_hash,
         identifier: parsed.verification_level,
-        nonce: parsed.nonce,
       },
     ],
   };
