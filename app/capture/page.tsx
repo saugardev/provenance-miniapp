@@ -57,6 +57,7 @@ type CapturePayload = {
   gps: GpsLocation;
   capturedAtLabel: string;
 };
+type FacingMode = "environment" | "user";
 
 const manrope = Manrope({ weight: ["400", "500", "700"], subsets: ["latin"], display: "swap" });
 
@@ -128,6 +129,7 @@ export default function CapturePage() {
   const [cameraReady, setCameraReady] = useState(false);
   const [busyCamera, setBusyCamera] = useState(false);
   const [busyCapture, setBusyCapture] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState<FacingMode>("environment");
   const [capture, setCapture] = useState<CapturePayload | null>(null);
 
   const [verificationPayload, setVerificationPayload] = useState<VerificationPayload | null>(null);
@@ -150,6 +152,31 @@ export default function CapturePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [error, setError] = useState("");
+
+  async function getCameraStream(mode: FacingMode): Promise<MediaStream> {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: mode } },
+        audio: false,
+      });
+    } catch {
+      return navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: mode } },
+        audio: false,
+      });
+    }
+  }
+
+  async function attachStream(stream: MediaStream, mode: FacingMode) {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = stream;
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+    }
+    setCameraFacingMode(mode);
+    setCameraReady(true);
+  }
 
   useEffect(() => {
     return () => {
@@ -241,21 +268,26 @@ export default function CapturePage() {
     setError("");
     try {
       await getGpsPosition();
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setCameraReady(true);
+      const stream = await getCameraStream("environment");
+      await attachStream(stream, "environment");
     } catch (err) {
       setError(`Camera/GPS permission is required: ${String(err)}`);
       setCameraReady(false);
+    } finally {
+      setBusyCamera(false);
+    }
+  }
+
+  async function switchCamera() {
+    if (!cameraReady || busyCamera || busyCapture) return;
+    setBusyCamera(true);
+    setError("");
+    try {
+      const nextMode: FacingMode = cameraFacingMode === "environment" ? "user" : "environment";
+      const stream = await getCameraStream(nextMode);
+      await attachStream(stream, nextMode);
+    } catch (err) {
+      setError(`Unable to switch camera: ${String(err)}`);
     } finally {
       setBusyCamera(false);
     }
@@ -523,14 +555,31 @@ export default function CapturePage() {
 
       <div className={styles.floatingCaptureControls}>
         {cameraReady ? (
-          <button
-            className={styles.shutterButton}
-            aria-label={busyCapture ? "Capturing photo" : "Take photo"}
-            disabled={busyCapture}
-            onClick={quickPhoto}
-          >
-            <span className={styles.shutterInner} />
-          </button>
+          <>
+            <button
+              className={styles.shutterButton}
+              aria-label={busyCapture ? "Capturing photo" : "Take photo"}
+              disabled={busyCapture}
+              onClick={quickPhoto}
+            >
+              <span className={styles.shutterInner} />
+            </button>
+            <button
+              className={styles.switchCameraButton}
+              type="button"
+              onClick={switchCamera}
+              aria-label="Switch camera"
+              disabled={busyCamera || busyCapture}
+            >
+              {busyCamera ? (
+                "..."
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3" />
+                </svg>
+              )}
+            </button>
+          </>
         ) : (
           <button className={styles.quickButton} disabled={busyCamera || busyCapture} onClick={quickPhoto}>
             {busyCamera ? "Enabling..." : "Enable camera"}
@@ -587,7 +636,6 @@ export default function CapturePage() {
                 />
               </svg>
             </button>
-            <Link className={styles.techLink} href="/verify">Technical mode</Link>
           </div>
 
           {capture ? (
