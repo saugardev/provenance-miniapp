@@ -160,20 +160,29 @@ export default function Page() {
         setVerifyStatus("Approve the request in World App...");
       }
 
-      // 3. Poll with status updates so the user can see progress
+      // 3. Poll with status updates, hard timeout of 3 minutes
       let completion;
+      const deadline = Date.now() + 3 * 60 * 1000;
+      let elapsed = 0;
       while (true) {
+        if (Date.now() > deadline) {
+          throw new Error(
+            "Proof generation timed out (3 min). If you were recently orb-verified, " +
+            "your inclusion proof may still be pending on-chain — wait a few hours and try again.",
+          );
+        }
         const status = await request.pollOnce();
         if (status.type === "waiting_for_connection") {
           setVerifyStatus(inApp ? "Approve the request in World App..." : "Waiting for World App to connect...");
         } else if (status.type === "awaiting_confirmation") {
-          setVerifyStatus("Generating ZK proof in World App (30–60s)...");
-          setConnectorURI(""); // clear QR once user is in World App
+          elapsed += 1;
+          setConnectorURI("");
+          setVerifyStatus(`Generating ZK proof in World App... (${elapsed}s elapsed)`);
         } else if (status.type === "confirmed") {
           completion = { success: true as const, result: status.result! };
           break;
         } else {
-          // status.type === "failed"
+          // status.type === "failed" — map to human-readable message
           const code = status.error ?? IDKitErrorCodes.GenericError;
           throw new Error(idkitErrorMessage(code));
         }
@@ -289,8 +298,10 @@ export default function Page() {
         {verifyStatus ? <p className="hint">⏳ {verifyStatus}</p> : null}
         {connectorURI ? (
           <div className="result">
-            <p className="hint">Not inside World App — open this link on your phone:</p>
-            <a href={connectorURI} style={{ wordBreak: "break-all", fontSize: "0.75rem" }}>{connectorURI}</a>
+            <p className="hint">Not inside World App — tap the button to open World App and approve:</p>
+            <a className="button secondary" href={connectorURI} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", textAlign: "center" }}>
+              Open in World App
+            </a>
           </div>
         ) : null}
         <p className="hint">IDKit result: {idkitResult ? `✅ captured (protocol ${(idkitResult as any).protocol_version})` : "not captured yet"}</p>
