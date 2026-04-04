@@ -1,7 +1,7 @@
 /**
  * POST /api/verify-proof
  *
- * Verifies a World ID ZK proof (v3 or v4) against the World ID Developer API.
+ * Verifies a World ID ZK proof (v3 orbLegacy) against the World ID Developer API.
  * Called by the frontend immediately after the World App returns a proof,
  * before the user submits their image — so they get fast feedback.
  *

@@ -7,7 +7,7 @@
  *   3. Build and ED25519-sign a Livy provenance attestation payload.
  *   4. Persist the payload to state/ and return it.
  *
- * Works for both v3 (orbLegacy, includes merkle_root) and v4 (merkle_root is empty).
+ * Uses v3 orbLegacy proofs (merkle_root included).
  *
  * Docs:
  *   Verify API:          https://docs.world.org/api-reference/developer-portal/verify
@@ -74,7 +74,6 @@ export async function POST(req: Request) {
 
     // --- Step 1: Re-verify proof server-side ---
     // Forwards IDKitResult as-is to /api/v4/verify/{rp_id}.
-    // Both v3 and v4 are accepted by the same endpoint.
     console.log(`[submit-image] verifying proof action="${action}" protocol_version=${(body.idkitResponse as any)?.protocol_version ?? "unknown"}`);
     const verification = await verifyIdKitResponse(idkitPayload);
     if (!verification.success) {
@@ -88,10 +87,10 @@ export async function POST(req: Request) {
 
     // --- Step 2: Extract proof fields ---
     // nullifier  — unique per (user, action); used as a human-identity anchor.
-    // merkleRoot — on-chain anchor for v3 (orbLegacy); empty string for v4.
+    // merkleRoot — on-chain anchor for v3 (orbLegacy).
     // verificationLevel — e.g. "orb".
     const { nullifier, verificationLevel, merkleRoot } = extractIdkitFields(idkitPayload);
-    console.log(`[submit-image] nullifier="${nullifier}" verificationLevel="${verificationLevel}" merkleRoot="${merkleRoot || "(none, v4)"}"`);
+    console.log(`[submit-image] nullifier="${nullifier}" verificationLevel="${verificationLevel}" merkleRoot="${merkleRoot || "(missing)"}"`);
     if (!nullifier) {
       console.warn("[submit-image] verified payload missing nullifier");
       return NextResponse.json(

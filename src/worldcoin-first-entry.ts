@@ -34,7 +34,6 @@ export type WorldSignature = {
  * Populated from the IDKitResult after backend verification succeeds.
  *
  * v3 (orbLegacy): merkle_root is the on-chain Merkle root at proof time.
- * v4 (World ID 4): merkle_root is an empty string.
  */
 export type WorldcoinProof = {
   proof_status: "verified" | "failed";
@@ -42,7 +41,7 @@ export type WorldcoinProof = {
   nullifier_hash: string;
   /** Session ID returned by the World ID Developer API on verification. */
   miniapp_session_id: string;
-  /** v3 only: on-chain Semaphore Merkle root. Empty string for v4. */
+  /** v3: on-chain Semaphore Merkle root. */
   merkle_root: string;
   verification_level: string;
   version?: number;
@@ -119,7 +118,7 @@ export function wirePublicValues(entries: readonly unknown[]): Buffer {
  * Format: "livy-worldcoin-v1|{content_hash}|{nullifier_hash}|{action}|{signal}|{timestamp_ms}|{content_id}"
  *
  * Fields are ordered so the most stable identifiers come first.
- * signal defaults to "" if absent (v4 proofs without a signal).
+ * signal defaults to "" if absent.
  */
 export function canonicalMessage(parts: {
   content_hash: string;

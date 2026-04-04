@@ -1,16 +1,11 @@
 /**
  * World ID proof verification helpers.
  *
- * Verification flow (both v3 and v4):
+ * Verification flow (v3 orbLegacy):
  *   1. Frontend calls IDKit.request() → World App generates a ZK proof.
  *   2. Frontend forwards the raw IDKitResult to POST /api/verify-proof.
  *   3. Backend forwards it as-is to the World ID Developer API.
  *   4. On success, backend extracts fields for payload building.
- *
- * Protocol differences:
- *   - v3 (orbLegacy)  — IDKitResult contains merkle_root; `action` may be absent.
- *   - v4 (World ID 4) — IDKitResult has no merkle_root; `action` always present.
- *   Both are verified via the same endpoint; the API accepts either shape.
  *
  * Docs:
  *   Integrate IDKit:     https://docs.world.org/world-id/idkit/integrate
@@ -29,7 +24,7 @@ export type VerifyResult = {
 
 /**
  * Reads and validates WORLDCOIN_RP_ID from env.
- * Must start with `rp_` (World ID 4) or `app_` (legacy orb).
+ * Must start with `rp_` or `app_`.
  * Obtain from https://developer.world.org → your app → "Relying Party".
  */
 export function resolveWorldcoinRpId(): string {
@@ -50,7 +45,6 @@ export function resolveWorldcoinRpId(): string {
  *
  * "Forward the IDKit result payload as-is. No field remapping is required."
  *
- * Works for both v3 (orbLegacy) and v4 proofs.
  * For v3, the caller must inject `action` into the payload before calling this
  * because orbLegacy results may omit it (see /api/verify-proof and /api/submit-image).
  */
@@ -84,24 +78,23 @@ export async function verifyIdKitResponse(idkitResponse: unknown): Promise<Verif
 }
 
 // ---------------------------------------------------------------------------
-// Field extraction — v3 vs v4 normalization
+// Field extraction
 // ---------------------------------------------------------------------------
 
 /**
  * Extracts the fields needed for attestation building from an IDKitResult.
  *
- * IDKitResult shape (both versions):
+ * IDKitResult shape:
  *   { responses: [{ nullifier, identifier, merkle_root? }], ... }
  *
  * v3 (orbLegacy): responses[0].merkle_root is populated (on-chain anchor).
- * v4 (World ID 4): responses[0].merkle_root is absent → returns empty string.
  *
  * Docs: https://docs.world.org/world-id/idkit/reference#idkitresult
  */
 export function extractIdkitFields(result: unknown): {
   nullifier: string;
   verificationLevel: string;
-  merkleRoot: string; // populated for v3; empty string for v4
+  merkleRoot: string;
 } {
   const r = result as any;
   const res0 = Array.isArray(r?.responses) ? r.responses[0] : undefined;

@@ -68,18 +68,12 @@ async function sha256Hex(file: File): Promise<string> {
 export default function Page() {
   const ACTION = (process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "upload-photo").trim();
   const APP_ID = (process.env.NEXT_PUBLIC_WORLDCOIN_APP_ID ?? "") as `app_${string}`;
-  const WC_ENV = process.env.NEXT_PUBLIC_WORLDCOIN_ENVIRONMENT;
 
   // image state
   const [file, setFile] = useState<File | null>(null);
   const [contentId, setContentId] = useState("photo-001");
   const [contentHash, setContentHash] = useState("");
   const [busyHash, setBusyHash] = useState(false);
-
-  // "legacy" → orbLegacy preset (World ID v3, Semaphore Merkle proof, merkle_root populated)
-  // "v4"     → proof_of_human constraint (World ID 4, no merkle_root)
-  // Docs: https://docs.world.org/world-id/idkit/integrate#choosing-a-preset
-  const [mode, setMode] = useState<"legacy" | "v4">("legacy");
 
   // verification state
   const [idkitResult, setIdkitResult] = useState<IDKitResult | null>(null);
@@ -140,26 +134,17 @@ export default function Page() {
     }
   }
 
-  function switchMode(next: "legacy" | "v4") {
-    setMode(next);
-    setIdkitResult(null);
-    setVerifiedByBackend(false);
-    setError("");
-    setSubmitResult(null);
-    setVerifyStatus("");
-    setConnectorURI("");
-    logClient("Switched mode", { mode: next });
-  }
-
   async function verify() {
     setBusyVerify(true);
     setError("");
     setConnectorURI("");
     setIdkitResult(null);
     setVerifiedByBackend(false);
+    let waitingTicker: ReturnType<typeof setInterval> | null = null;
+    let waitingLogTicker: ReturnType<typeof setInterval> | null = null;
 
     try {
-      logClient("Starting verification", { mode, action: ACTION });
+      logClient("Starting verification", { mode: "legacy", action: ACTION });
       if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
         throw new Error("Select an image first — the signal is bound to the content hash.");
       }
@@ -169,9 +154,9 @@ export default function Page() {
 
       // Step 1 — fetch RP context from backend (signing key never leaves the server)
       setVerifyStatus("Fetching RP signature...");
-      const verifyTimeoutMs = 120_000;
-      const rpTtlSeconds = mode === "legacy" ? 900 : 300;
-      logClient("Fetching RP signature", { verifyTimeoutMs, rpTtlSeconds });
+      const verifyTimeoutMs = 900_000;
+      const rpTtlSeconds = 900;
+      logClient("Fetching RP signature", { verifyTimeoutMs, rpTtlSeconds, preset: "orbLegacy" });
 
       const rpResp = await fetch("/api/rp-signature", {
         method: "POST",
@@ -190,8 +175,7 @@ export default function Page() {
 
       // Step 2 — create IDKit request
       // signal is bound to the image hash so the proof is cryptographically tied to this content.
-      // allow_legacy_proofs must match the preset: true for orbLegacy (v3), false for v4.
-      // Docs: https://docs.world.org/world-id/idkit/integrate
+      // v3 orbLegacy only.
       const builder = IDKit.request({
         app_id: APP_ID,
         action: ACTION,
@@ -202,16 +186,10 @@ export default function Page() {
           expires_at: rp.expires_at,
           signature: rp.sig,
         },
-        allow_legacy_proofs: mode === "legacy",
-        ...(WC_ENV === "staging" || WC_ENV === "production" ? { environment: WC_ENV } : {}),
+        allow_legacy_proofs: true,
       });
 
-      // v3 (orbLegacy): returns IDKitResult with responses[0].merkle_root populated.
-      // v4 (proof_of_human): returns IDKitResult without merkle_root.
-      // Both shapes are forwarded as-is to the backend verify endpoint.
-      const request = await (mode === "legacy"
-        ? builder.preset(orbLegacy({ signal: contentHash }))
-        : builder.constraints({ type: "proof_of_human", signal: contentHash }));
+      const request = await builder.preset(orbLegacy({ signal: contentHash }));
 
       // connectorURI is empty inside World App (postMessage), non-empty on web (bridge/QR)
       if (request.connectorURI) {
@@ -225,13 +203,25 @@ export default function Page() {
 
       // Step 3 — use IDKit completion API (no manual pollOnce loop)
       setVerifyStatus("Waiting for World App confirmation...");
+      const startedAt = Date.now();
+      logClient("Waiting for World App confirmation (poll loop started)");
+      waitingTicker = setInterval(() => {
+        const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+        setVerifyStatus(`Waiting for World App confirmation... (${elapsedSec}s)`);
+      }, 2_000);
+      waitingLogTicker = setInterval(() => {
+        const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+        logClient("Still waiting for completion", { elapsedSec });
+      }, 10_000);
       const completion = await request.pollUntilCompletion({
         pollInterval: 2_000,
         timeout: verifyTimeoutMs,
       });
       if (!completion.success) {
         if (completion.error === IDKitErrorCodes.Timeout) {
-          throw new Error(idkitErrorMessage(IDKitErrorCodes.Timeout));
+          throw new Error(
+            "Verification timed out after 15 minutes. v3 orb proofs can be delayed when inclusion is pending; retry later.",
+          );
         }
         if (completion.error === IDKitErrorCodes.Cancelled) {
           throw new Error("Verification was cancelled in World App.");
@@ -268,6 +258,8 @@ export default function Page() {
       setVerifyStatus("");
       setConnectorURI("");
     } finally {
+      if (waitingTicker !== null) clearInterval(waitingTicker);
+      if (waitingLogTicker !== null) clearInterval(waitingLogTicker);
       setBusyVerify(false);
     }
   }
@@ -337,15 +329,7 @@ export default function Page() {
         </p>
 
         {/* World ID verification */}
-        <h2>World ID Proof</h2>
-        <div className="tabs">
-          <button className={`tab${mode === "legacy" ? " active" : ""}`} onClick={() => switchMode("legacy")}>
-            Orb Legacy (v3)
-          </button>
-          <button className={`tab${mode === "v4" ? " active" : ""}`} onClick={() => switchMode("v4")}>
-            World ID 4.0
-          </button>
-        </div>
+        <h2>World ID Proof (Orb Legacy v3)</h2>
 
         <div className="row two">
           <label className="field">

@@ -5,7 +5,7 @@
  * to IDKit as `rp_context`. The signing key never leaves the server.
  *
  * Why this exists:
- *   World ID 4 requires the RP to prove it authorized the request by signing
+ *   World ID requires the RP to prove it authorized the request by signing
  *   the action with the private key registered in the Developer Portal.
  *   The frontend calls this endpoint first, then passes the returned context
  *   to IDKit.request({ rp_context: ... }).

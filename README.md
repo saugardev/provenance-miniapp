@@ -1,6 +1,6 @@
 # worldcoin-miniapp
 
-Unified Next.js app (UI + API routes) for World ID 4.0 image-hash verification and backend signing.
+Unified Next.js app (UI + API routes) for World ID v3 orbLegacy image-hash verification and backend signing.
 
 ## What it does
 
