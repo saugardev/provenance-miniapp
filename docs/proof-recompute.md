@@ -28,6 +28,16 @@ On successful upload, data is stored in `uploaded_images`:
 The signed payload format is produced by:
 - `src/worldcoin-first-entry.ts`
 
+When `OG_STORAGE_PRIVATE_KEY` is set, `/api/sign-provenance` also uploads a JSON record to 0G storage:
+- key format: `worldcoin-proof/{action}/{nullifier_hash}/{content_id}.json`
+- schema marker: `livy-worldcoin-proof-0g-v1`
+- includes: `nullifier_hash`, `action`, `content_id`, and full signed `payload`
+- upload metadata is returned in API response under `og_storage`:
+  - `root_hashes[]`
+  - `tx_hashes[]`
+  - `payload_sha256`
+  - `payload_bytes`
+
 ## 3. Canonical signed message format (v2)
 
 The signed message is pipe-delimited:
@@ -158,6 +168,11 @@ That means later you can verify:
 
 But you cannot replay the exact World verify API call without separately storing the raw proof response fields from frontend (`idkitResponse`/`proof`).
 
+If you keep the `og_storage` response data, you can additionally:
+- locate the exact signed record in 0G via `root_hashes`
+- verify record byte integrity with `payload_sha256`
+- tie chain transaction provenance via `tx_hashes`
+
 ## 8. Operational recommendations
 
 1. Keep private signing key stable and backed up (`state/signing_private_key.pem`).
@@ -167,6 +182,8 @@ But you cannot replay the exact World verify API call without separately storing
 - sample rows
 - recompute image hash + canonical message + signature + commitment hash
 - alert on mismatches.
+5. Persist `og_storage` metadata from `/api/sign-provenance` in your own audit table/logs.
+6. Keep the same 0G key template to avoid ambiguous record naming across deployments.
 
 ## 9. Versioning notes
 

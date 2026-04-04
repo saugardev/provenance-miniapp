@@ -25,6 +25,13 @@ type SubmitResponse = {
   detail?: unknown;
 };
 
+type ApiFailure = {
+  endpoint: string;
+  status: number;
+  statusText: string;
+  body: unknown;
+};
+
 type MiniAppProof = {
   proof: string;
   merkle_root: string;
@@ -125,6 +132,7 @@ export default function Page() {
   const [busySign, setBusySign] = useState(false);
   const [busyUpload, setBusyUpload] = useState(false);
   const [actionResult, setActionResult] = useState<SubmitResponse | null>(null);
+  const [apiFailure, setApiFailure] = useState<ApiFailure | null>(null);
   const [signedPayload, setSignedPayload] = useState<unknown>(null);
   const [denyStorageConsent, setDenyStorageConsent] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<GpsLocation | null>(null);
@@ -326,6 +334,7 @@ export default function Page() {
     setBusySign(true);
     setError("");
     setActionResult(null);
+    setApiFailure(null);
 
     try {
       const resp = await fetch("/api/sign-provenance", {
@@ -346,7 +355,19 @@ export default function Page() {
       if (resp.ok && data?.payload) {
         setSignedPayload(data.payload);
       }
-      if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
+      if (!resp.ok) {
+        setApiFailure({
+          endpoint: "/api/sign-provenance",
+          status: resp.status,
+          statusText: resp.statusText,
+          body: data,
+        });
+        setError(
+          data.error
+            ? `${data.error} (HTTP ${resp.status})`
+            : `Request failed (${resp.status} ${resp.statusText})`,
+        );
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -371,6 +392,7 @@ export default function Page() {
     setBusyUpload(true);
     setError("");
     setActionResult(null);
+    setApiFailure(null);
 
     try {
       const resp = await fetch("/api/upload-image", {
@@ -388,7 +410,19 @@ export default function Page() {
       });
       const data = (await resp.json()) as SubmitResponse;
       setActionResult(data);
-      if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
+      if (!resp.ok) {
+        setApiFailure({
+          endpoint: "/api/upload-image",
+          status: resp.status,
+          statusText: resp.statusText,
+          body: data,
+        });
+        setError(
+          data.error
+            ? `${data.error} (HTTP ${resp.status})`
+            : `Request failed (${resp.status} ${resp.statusText})`,
+        );
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -601,6 +635,12 @@ export default function Page() {
 
         {file ? <p className="hint">File: {file.name}</p> : null}
         {error ? <p className="error">{error}</p> : null}
+        {apiFailure ? (
+          <div className="result">
+            <h2>API Failure</h2>
+            <pre>{JSON.stringify(apiFailure, null, 2)}</pre>
+          </div>
+        ) : null}
 
         {actionResult ? (
           <div className="result">

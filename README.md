@@ -9,6 +9,7 @@ Unified Next.js app (UI + API routes) for World ID v3 orbLegacy image-hash verif
 - Mini app can call World MiniKit verify directly.
 - Server route verifies proof against World verify API.
 - Server signs canonical message with Ed25519 and stores payload.
+- On sign, the signed payload can also be uploaded to 0G storage.
 - World verify `signal` is forced to `content_hash` to bind proof to the image.
 - Accepted verification levels: `orb` and `device`.
 
@@ -52,6 +53,7 @@ Then it verifies `/api/verify-proof` and `/api/submit-image` end-to-end and prin
 - `GET /api/attestations`
 - `POST /api/rp-signature` (generates RP signature for IDKit connect flow)
 - `POST /api/verify-proof` (forwards raw `idkitResponse` to `/api/v4/verify/{rp_id}`)
+- `POST /api/sign-provenance` (creates signed payload; also uploads to 0G when configured)
 - `POST /api/submit-image`
 
 Example submit:
@@ -87,6 +89,9 @@ Optional:
 - `WORLDCOIN_MODE` (`dev` or `build`)
 - `RP_SIGNING_KEY` (required for `/api/rp-signature`)
 - `DATABASE_URL` (required for image + provenance DB persistence)
+- `OG_STORAGE_PRIVATE_KEY` (enables 0G upload on `/api/sign-provenance`)
+- `OG_STORAGE_EVM_RPC` (default `https://evmrpc-testnet.0g.ai`)
+- `OG_STORAGE_INDEXER_RPC` (default `https://indexer-storage-testnet-turbo.0g.ai`)
 
 ## Vercel
 

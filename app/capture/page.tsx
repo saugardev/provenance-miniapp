@@ -137,6 +137,7 @@ export default function CapturePage() {
   const [widgetOpen, setWidgetOpen] = useState(false);
   const [rpContext, setRpContext] = useState<RpContext | null>(null);
   const verifySucceededRef = useRef(false);
+  const autoSignAfterVerifyRef = useRef(false);
 
   const [busySign, setBusySign] = useState(false);
   const [busyUpload, setBusyUpload] = useState(false);
@@ -337,7 +338,38 @@ export default function CapturePage() {
     await capturePhotoNow();
   }
 
-  async function verifyHumanity() {
+  async function signProvenance(verification: VerificationPayload, photo: CapturePayload) {
+    setBusySign(true);
+    setError("");
+    setResult(null);
+
+    try {
+      const contentId = `capture-${photo.gps.captured_at_ms}`;
+      const resp = await fetch("/api/sign-provenance", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          content_id: contentId,
+          content_hash: photo.contentHash,
+          timestamp_ms: Date.now(),
+          gps_location: photo.gps,
+          ...(verification.kind === "idkit"
+            ? { idkitResponse: verification.idkitResponse }
+            : { proof: verification.proof }),
+        }),
+      });
+      const data = (await resp.json()) as SubmitResponse;
+      setResult(data);
+      if (resp.ok && data.payload) setSignedPayload(data.payload);
+      if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusySign(false);
+    }
+  }
+
+  async function verifyHumanity(autoSign = false) {
     if (!capture) {
       setError("Capture a photo first.");
       return;
@@ -396,9 +428,13 @@ export default function CapturePage() {
         setVerificationPayload({ kind: "minikit", proof });
         setVerifiedByBackend(true);
         setVerifyStatus("Verified.");
+        if (autoSign) {
+          await signProvenance({ kind: "minikit", proof }, capture);
+        }
         return;
       }
 
+      autoSignAfterVerifyRef.current = autoSign;
       setVerifyStatus("Fetching RP signature...");
       const rpResp = await fetch("/api/rp-signature", {
         method: "POST",
@@ -421,45 +457,22 @@ export default function CapturePage() {
     } catch (err) {
       setError(String(err));
       setVerifyStatus("");
+      autoSignAfterVerifyRef.current = false;
     } finally {
       setBusyVerify(false);
     }
   }
 
   async function proveHumanity() {
-    if (!capture || !verificationPayload || !verifiedByBackend) {
-      setError("Verify with World ID first.");
+    if (!capture) {
+      setError("Capture a photo first.");
       return;
     }
-
-    setBusySign(true);
-    setError("");
-    setResult(null);
-
-    try {
-      const contentId = `capture-${capture.gps.captured_at_ms}`;
-      const resp = await fetch("/api/sign-provenance", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          content_id: contentId,
-          content_hash: capture.contentHash,
-          timestamp_ms: Date.now(),
-          gps_location: capture.gps,
-          ...(verificationPayload.kind === "idkit"
-            ? { idkitResponse: verificationPayload.idkitResponse }
-            : { proof: verificationPayload.proof }),
-        }),
-      });
-      const data = (await resp.json()) as SubmitResponse;
-      setResult(data);
-      if (resp.ok && data.payload) setSignedPayload(data.payload);
-      if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusySign(false);
+    if (!verifiedByBackend || !verificationPayload) {
+      await verifyHumanity(true);
+      return;
     }
+    await signProvenance(verificationPayload, capture);
   }
 
   async function uploadImage() {
@@ -589,16 +602,12 @@ export default function CapturePage() {
           ) : null}
 
           <div className={styles.actions}>
-            <button className={styles.primary} disabled={!capture || busyVerify} onClick={verifyHumanity}>
-              {busyVerify ? "Verifying..." : "Verify with World ID"}
-            </button>
-            <button className={styles.primary} disabled={!verifiedByBackend || busySign || !capture} onClick={proveHumanity}>
-              {busySign ? "Proving..." : "Prove humanity"}
+            <button className={styles.primary} disabled={!capture || busyVerify || busySign} onClick={proveHumanity}>
+              {busyVerify ? "Verifying..." : busySign ? "Proving..." : "Prove humanity"}
             </button>
           </div>
 
           {verifyStatus ? <p className={styles.caption}>{verifyStatus}</p> : null}
-          <p className={styles.caption}>Verification: {verifiedByBackend ? "Verified" : "Not verified"}</p>
           <p className={styles.caption}>Signature: {signedPayload ? "Created" : "Not created"}</p>
 
           <label className={styles.consent}>
@@ -612,7 +621,7 @@ export default function CapturePage() {
 
           <div className={styles.actions}>
             <button className={styles.primary} disabled={!signedPayload || denyStorageConsent || busyUpload} onClick={uploadImage}>
-              {busyUpload ? "Uploading..." : "Upload image"}
+              {busyUpload ? "Uploading..." : "Upload"}
             </button>
           </div>
 
@@ -656,6 +665,10 @@ export default function CapturePage() {
             setVerifiedByBackend(true);
             setVerifyStatus("Verified.");
             verifySucceededRef.current = true;
+            if (autoSignAfterVerifyRef.current && capture) {
+              autoSignAfterVerifyRef.current = false;
+              await signProvenance({ kind: "idkit", idkitResponse: result }, capture);
+            }
           }}
           onSuccess={(result) => {
             setVerificationPayload((prev) => prev ?? { kind: "idkit", idkitResponse: result });
@@ -663,11 +676,13 @@ export default function CapturePage() {
             setVerifyStatus("Verified.");
             setWidgetOpen(false);
             verifySucceededRef.current = true;
+            autoSignAfterVerifyRef.current = false;
           }}
           onError={(errorCode) => {
             setError(idkitErrorMessage(errorCode));
             setVerifyStatus("");
             verifySucceededRef.current = false;
+            autoSignAfterVerifyRef.current = false;
           }}
         />
       ) : null}
