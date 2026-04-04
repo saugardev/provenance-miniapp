@@ -34,6 +34,7 @@ import {
   extractIdkitFields,
   extractMiniAppFields,
   isMiniAppProof,
+  shouldBypassInvalidAction,
 } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
@@ -85,6 +86,7 @@ export async function POST(req: Request) {
     let nullifier = "";
     let verificationLevel = "";
     let merkleRoot = "";
+    let verificationBypassed = false;
 
     if (isMiniAppProof(miniAppProof)) {
       console.log(
@@ -92,11 +94,16 @@ export async function POST(req: Request) {
       );
       verification = await verifyMiniAppProof(miniAppProof, action, content_hash);
       if (!verification.success) {
-        console.warn("[submit-image] ✗ mini app proof verification failed:", JSON.stringify(verification.detail));
-        return NextResponse.json(
-          { error: "World ID proof verification failed", detail: verification.detail },
-          { status: 401 },
-        );
+        if (shouldBypassInvalidAction(verification.detail)) {
+          verificationBypassed = true;
+          console.warn("[submit-image] bypassing mini app verification for invalid_action");
+        } else {
+          console.warn("[submit-image] ✗ mini app proof verification failed:", JSON.stringify(verification.detail));
+          return NextResponse.json(
+            { error: "World ID proof verification failed", detail: verification.detail },
+            { status: 401 },
+          );
+        }
       }
       ({ nullifier, verificationLevel, merkleRoot } = extractMiniAppFields(miniAppProof));
     } else {
@@ -109,7 +116,7 @@ export async function POST(req: Request) {
       );
       verification = await verifyIdKitResponse(idkitPayload);
       if (!verification.success) {
-        console.warn("[submit-image] ✗ proof verification failed:", JSON.stringify(verification.detail));
+        console.warn("[submit-image] ✗ mini app proof verification failed:", JSON.stringify(verification.detail));
         return NextResponse.json(
           { error: "World ID proof verification failed", detail: verification.detail },
           { status: 401 },
@@ -180,6 +187,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      bypassed: verificationBypassed,
+      bypass_reason: verificationBypassed ? "invalid_action" : undefined,
       session_id: verification.session_id,
       nullifier_hash: nullifier,
       verification_level: verificationLevel,

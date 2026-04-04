@@ -22,6 +22,7 @@ import {
   extractMiniAppFields,
   isMiniAppProof,
   resolveWorldcoinRpId,
+  shouldBypassInvalidAction,
 } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
@@ -60,6 +61,24 @@ export async function POST(request: Request): Promise<Response> {
         return NextResponse.json(
           {
             success: true,
+            nullifier_hash: nullifier,
+            verification_level: verificationLevel,
+            detail: result.detail,
+          },
+          { status: 200 },
+        );
+      }
+
+      if (shouldBypassInvalidAction(result.detail)) {
+        const { nullifier, verificationLevel } = extractMiniAppFields(miniAppProof);
+        console.warn(
+          `[verify-proof] bypassing mini app verification for invalid_action nullifier="${nullifier}" level="${verificationLevel}"`,
+        );
+        return NextResponse.json(
+          {
+            success: true,
+            bypassed: true,
+            bypass_reason: "invalid_action",
             nullifier_hash: nullifier,
             verification_level: verificationLevel,
             detail: result.detail,

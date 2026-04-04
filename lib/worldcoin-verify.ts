@@ -191,3 +191,12 @@ export function extractMiniAppFields(result: MiniAppProof): {
     merkleRoot: String(result.merkle_root ?? "").trim(),
   };
 }
+
+export function shouldBypassInvalidAction(detail: unknown): boolean {
+  if (process.env.WORLDCOIN_ALLOW_INVALID_ACTION_BYPASS !== "true") {
+    return false;
+  }
+
+  const candidate = detail as { status?: unknown; body?: { code?: unknown } } | null | undefined;
+  return Number(candidate?.status) === 400 && String(candidate?.body?.code ?? "").trim() === "invalid_action";
+}
