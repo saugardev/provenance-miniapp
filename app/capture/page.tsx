@@ -121,6 +121,7 @@ export default function CapturePage() {
   const drawerRef = useRef<HTMLElement | null>(null);
   const dragStartYRef = useRef(0);
   const dragStartOffsetRef = useRef(0);
+  const dragStartedOpenRef = useRef(false);
   const draggingRef = useRef(false);
   const draggedRef = useRef(false);
   const overshootMaskTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,6 +148,7 @@ export default function CapturePage() {
   const [drawerDragOffset, setDrawerDragOffset] = useState<number | null>(null);
   const [overshootMaskHeight, setOvershootMaskHeight] = useState(0);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -193,6 +195,7 @@ export default function CapturePage() {
     target.setPointerCapture(e.pointerId);
     draggingRef.current = true;
     draggedRef.current = false;
+    dragStartedOpenRef.current = drawerOpen;
     dragStartYRef.current = e.clientY;
     dragStartOffsetRef.current = drawerOpen ? 0 : getClosedDrawerOffset();
     setDrawerDragOffset(dragStartOffsetRef.current);
@@ -214,7 +217,10 @@ export default function CapturePage() {
     const finalOffset = drawerDragOffset ?? (drawerOpen ? 0 : closedOffset);
     const releasedOvershoot = finalOffset < 0 ? Math.abs(finalOffset) : 0;
     const clamped = Math.max(0, Math.min(closedOffset, finalOffset));
-    setDrawerOpen(clamped < closedOffset * 0.55);
+    const nextOpen = dragStartedOpenRef.current
+      ? clamped < closedOffset * 0.35
+      : clamped < closedOffset * 0.75;
+    setDrawerOpen(nextOpen);
     setDrawerDragOffset(null);
 
     if (overshootMaskTimeoutRef.current) clearTimeout(overshootMaskTimeoutRef.current);
@@ -533,12 +539,25 @@ export default function CapturePage() {
           onPointerCancel={onDrawerPointerEnd}
         >
           <span className={styles.drawerKnob} />
-          <span className={styles.drawerPeekText}>
-            {capture ? "Photo ready. Continue to prove." : "Scroll or tap to open controls"}
-          </span>
         </button>
 
         <div className={styles.drawerBody}>
+          <div className={styles.drawerTopActions}>
+            <button
+              className={styles.settingsButton}
+              type="button"
+              aria-label="Open settings"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Zm8.4 2.1-1.4-.2a7.5 7.5 0 0 0-.8-1.9l.8-1.2a.8.8 0 0 0-.1-1l-1.4-1.4a.8.8 0 0 0-1-.1l-1.2.8a7.5 7.5 0 0 0-1.9-.8l-.2-1.4a.8.8 0 0 0-.8-.7h-2a.8.8 0 0 0-.8.7l-.2 1.4a7.5 7.5 0 0 0-1.9.8l-1.2-.8a.8.8 0 0 0-1 .1L4 6.6a.8.8 0 0 0-.1 1l.8 1.2a7.5 7.5 0 0 0-.8 1.9l-1.4.2a.8.8 0 0 0-.7.8v2c0 .4.3.7.7.8l1.4.2a7.5 7.5 0 0 0 .8 1.9l-.8 1.2a.8.8 0 0 0 .1 1L5.4 20a.8.8 0 0 0 1 .1l1.2-.8a7.5 7.5 0 0 0 1.9.8l.2 1.4c.1.4.4.7.8.7h2c.4 0 .7-.3.8-.7l.2-1.4a7.5 7.5 0 0 0 1.9-.8l1.2.8a.8.8 0 0 0 1-.1l1.4-1.4a.8.8 0 0 0 .1-1l-.8-1.2a7.5 7.5 0 0 0 .8-1.9l1.4-.2c.4-.1.7-.4.7-.8v-2a.8.8 0 0 0-.7-.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+          </div>
+
           <div className={styles.actions}>
             <button className={styles.secondary} disabled={busyCamera || busyCapture} onClick={openCameraWithPermissionCheck}>
               {busyCamera ? "Enabling..." : cameraReady ? "Re-open camera" : "Enable camera"}
@@ -637,6 +656,55 @@ export default function CapturePage() {
           }}
         />
       ) : null}
+
+      <div
+        className={`${styles.settingsBackdrop} ${settingsOpen ? styles.settingsBackdropOpen : ""}`}
+        onClick={() => setSettingsOpen(false)}
+        aria-hidden={!settingsOpen}
+      />
+      <section
+        className={`${styles.settingsOverlay} ${settingsOpen ? styles.settingsOverlayOpen : ""}`}
+        aria-hidden={!settingsOpen}
+      >
+        <div className={styles.settingsHeader}>
+          <h2 className={styles.settingsTitle}>Settings</h2>
+          <button className={styles.settingsClose} type="button" onClick={() => setSettingsOpen(false)}>
+            Done
+          </button>
+        </div>
+
+        <div className={styles.settingsBody}>
+          <div className={styles.settingsSection}>
+            <p className={styles.settingsSectionTitle}>Alerts</p>
+            <button className={styles.settingsItem} type="button">Friends Photos</button>
+          </div>
+
+          <div className={styles.settingsSection}>
+            <p className={styles.settingsSectionTitle}>Customize</p>
+            <button className={styles.settingsItem} type="button">Appearance</button>
+          </div>
+
+          <div className={styles.settingsSection}>
+            <p className={styles.settingsSectionTitle}>Manage</p>
+            <button className={styles.settingsItem} type="button">import photos</button>
+            <button className={styles.settingsItem} type="button">export photos</button>
+          </div>
+
+          <div className={styles.settingsSection}>
+            <p className={styles.settingsSectionTitle}>Help</p>
+            <button className={styles.settingsItem} type="button">FAQ</button>
+            <button className={styles.settingsItem} type="button">Send Feedback</button>
+            <button className={styles.settingsItem} type="button">whats new</button>
+          </div>
+
+          <div className={styles.settingsSection}>
+            <p className={styles.settingsSectionTitle}>More</p>
+            <button className={styles.settingsItem} type="button">Invite friends</button>
+            <button className={styles.settingsItem} type="button">About</button>
+            <Link className={styles.settingsItemLink} href="/terms">Terms</Link>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
