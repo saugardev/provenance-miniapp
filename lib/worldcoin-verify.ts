@@ -1,3 +1,27 @@
+/**
+ * World ID proof verification helpers.
+ *
+ * Verification flow (both v3 and v4):
+ *   1. Frontend calls IDKit.request() → World App generates a ZK proof.
+ *   2. Frontend forwards the raw IDKitResult to POST /api/verify-proof.
+ *   3. Backend forwards it as-is to the World ID Developer API.
+ *   4. On success, backend extracts fields for payload building.
+ *
+ * Protocol differences:
+ *   - v3 (orbLegacy)  — IDKitResult contains merkle_root; `action` may be absent.
+ *   - v4 (World ID 4) — IDKitResult has no merkle_root; `action` always present.
+ *   Both are verified via the same endpoint; the API accepts either shape.
+ *
+ * Docs:
+ *   Integrate IDKit:     https://docs.world.org/world-id/idkit/integrate
+ *   Cloud verification:  https://docs.world.org/world-id/quick-start/cloud
+ *   RP (Relying Party):  https://docs.world.org/world-id/idkit/advanced
+ */
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
 export type VerifyResult = {
   success: boolean;
   detail?: unknown;
@@ -5,6 +29,11 @@ export type VerifyResult = {
   session_id?: string;
 };
 
+/**
+ * Reads and validates WORLDCOIN_RP_ID from env.
+ * Must start with `rp_` (World ID 4) or `app_` (legacy orb).
+ * Obtain from https://developer.world.org → your app → "Relying Party".
+ */
 export function resolveWorldcoinRpId(): string {
   const raw = String(process.env.WORLDCOIN_RP_ID ?? "").trim();
   if (!raw) {
@@ -14,10 +43,19 @@ export function resolveWorldcoinRpId(): string {
   throw new Error("WORLDCOIN_RP_ID must start with rp_ (preferred) or app_ (legacy)");
 }
 
+// ---------------------------------------------------------------------------
+// Proof verification — World ID Developer API
+// ---------------------------------------------------------------------------
+
 /**
- * Forwards the raw IDKitResult to the World ID verify API.
- * Per docs: "Forward the IDKit result payload as-is. No field remapping is required."
- * https://docs.world.org/world-id/idkit/integrate
+ * Forwards the raw IDKitResult to the World ID verify API and returns success/failure.
+ *
+ * "Forward the IDKit result payload as-is. No field remapping is required."
+ * — https://docs.world.org/world-id/quick-start/cloud#verifying-the-proof
+ *
+ * Works for both v3 (orbLegacy) and v4 proofs.
+ * For v3, the caller must inject `action` into the payload before calling this
+ * because orbLegacy results may omit it (see /api/verify-proof and /api/submit-image).
  */
 export async function verifyIdKitResponse(idkitResponse: unknown): Promise<VerifyResult> {
   const rpId = resolveWorldcoinRpId();
@@ -25,6 +63,7 @@ export async function verifyIdKitResponse(idkitResponse: unknown): Promise<Verif
 
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.WORLDCOIN_API_KEY) {
+    // Optional: set in World Developer Portal for higher rate limits
     headers.authorization = `Bearer ${process.env.WORLDCOIN_API_KEY}`;
   }
 
@@ -47,20 +86,31 @@ export async function verifyIdKitResponse(idkitResponse: unknown): Promise<Verif
   };
 }
 
+// ---------------------------------------------------------------------------
+// Field extraction — v3 vs v4 normalization
+// ---------------------------------------------------------------------------
+
 /**
- * Extracts proof fields from an IDKitResult for downstream payload building.
- * Handles both protocol v3 (nullifier + merkle_root) and v4 (nullifier only).
+ * Extracts the fields needed for attestation building from an IDKitResult.
+ *
+ * IDKitResult shape (both versions):
+ *   { responses: [{ nullifier, identifier, merkle_root? }], ... }
+ *
+ * v3 (orbLegacy): responses[0].merkle_root is populated (on-chain anchor).
+ * v4 (World ID 4): responses[0].merkle_root is absent → returns empty string.
+ *
+ * Docs: https://docs.world.org/world-id/idkit/reference#idkitresult
  */
 export function extractIdkitFields(result: unknown): {
   nullifier: string;
   verificationLevel: string;
-  merkleRoot: string;
+  merkleRoot: string; // populated for v3; empty string for v4
 } {
   const r = result as any;
   const res0 = Array.isArray(r?.responses) ? r.responses[0] : undefined;
   return {
     nullifier: String(res0?.nullifier ?? "").trim(),
     verificationLevel: String(res0?.identifier ?? "").trim(),
-    merkleRoot: String(res0?.merkle_root ?? "").trim(), // v3 only; empty for v4
+    merkleRoot: String(res0?.merkle_root ?? "").trim(),
   };
 }

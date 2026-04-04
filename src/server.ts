@@ -1,3 +1,24 @@
+/**
+ * Legacy standalone HTTP server (alternative to the Next.js app).
+ *
+ * Run with: npm run dev:legacy-api
+ *
+ * This server replicates the POST /api/submit-image logic from the Next.js
+ * route (app/api/submit-image/route.ts) as a plain Node.js HTTP server —
+ * useful when running without Next.js.
+ *
+ * Key difference vs the Next.js route:
+ *   - Accepts a pre-extracted `worldcoin_proof` object in the request body
+ *     (rather than a raw IDKitResult). The caller is responsible for extracting
+ *     the proof fields before calling this server.
+ *   - Uses protocol_version "3.0" explicitly, making this a v3-only endpoint.
+ *     For v4 proofs use the Next.js app instead.
+ *
+ * Docs:
+ *   Cloud verification:  https://docs.world.org/world-id/quick-start/cloud
+ *   Verify endpoint:     POST https://developer.world.org/api/v4/verify/{rp_id}
+ */
+
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -5,6 +26,7 @@ import { URL } from "node:url";
 import { loadOrCreateKeyMaterial } from "./key-material.ts";
 import { appendSubmission, loadState, saveState } from "./state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "./worldcoin-first-entry.ts";
+import { resolveWorldcoinRpId } from "../lib/worldcoin-verify.ts";
 
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
@@ -17,6 +39,10 @@ const publicKeyPath = resolve(dataDir, "signing_public_key.pem");
 
 const keyMaterial = loadOrCreateKeyMaterial(privateKeyPath, publicKeyPath);
 const worldcoinRpId = resolveWorldcoinRpId();
+
+// ---------------------------------------------------------------------------
+// HTTP helpers
+// ---------------------------------------------------------------------------
 
 function sendJson(res: ServerResponse, statusCode: number, value: unknown) {
   const body = JSON.stringify(value, null, 2);
@@ -51,7 +77,18 @@ async function readJsonBody(req: IncomingMessage): Promise<any> {
   return JSON.parse(raw);
 }
 
-async function verifyWorldcoinProof(input: {
+// ---------------------------------------------------------------------------
+// v3 proof verification (protocol_version "3.0")
+//
+// This function manually constructs the verify request with explicit v3 fields
+// (merkle_root, proof, nullifier_hash, verification_level).
+// The Next.js route uses verifyIdKitResponse() from lib/worldcoin-verify.ts
+// instead, which forwards the raw IDKitResult and handles both v3 and v4.
+//
+// Docs: https://docs.world.org/world-id/quick-start/cloud#verifying-the-proof
+// ---------------------------------------------------------------------------
+
+async function verifyWorldcoinProofV3(input: {
   action: string;
   signal?: string;
   proof: string;
@@ -72,47 +109,28 @@ async function verifyWorldcoinProof(input: {
     merkle_root: input.merkle_root,
   };
 
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
+  const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.WORLDCOIN_API_KEY) {
     headers.authorization = `Bearer ${process.env.WORLDCOIN_API_KEY}`;
   }
 
-  const resp = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-
+  const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok) {
     return { success: false, detail: { status: resp.status, payload } };
   }
 
-  const success = payload?.success === true;
   return {
-    success,
+    success: payload?.success === true,
     detail: payload,
     environment: payload?.environment,
     session_id: payload?.session_id,
   };
 }
 
-function resolveWorldcoinRpId(): string {
-  const raw = String(process.env.WORLDCOIN_RP_ID ?? "").trim();
-  if (!raw) {
-    throw new Error("WORLDCOIN_RP_ID is required (expected rp_... from World Developer Portal)");
-  }
-  if (raw.startsWith("rp_")) return raw;
-  if (raw.startsWith("app_")) {
-    console.warn(
-      "[worldcoin-miniapp] WORLDCOIN_RP_ID is using app_... (legacy compatible). Prefer rp_... for World ID 4.0.",
-    );
-    return raw;
-  }
-  throw new Error("WORLDCOIN_RP_ID must start with rp_ (preferred) or app_ (legacy)");
-}
+// ---------------------------------------------------------------------------
+// Request handling
+// ---------------------------------------------------------------------------
 
 function isSha256Hash(v: string): boolean {
   return /^sha256:[0-9a-f]{64}$/i.test(v);
@@ -142,6 +160,13 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/") {
+      sendText(res, 200, ["worldcoin-miniapp legacy backend", "", "POST /api/submit-image", "GET  /healthz"].join("\n"));
+      return;
+    }
+
+    // POST /api/submit-image
+    // Expects a pre-extracted worldcoin_proof object (v3 format).
     if (req.method === "POST" && url.pathname === "/api/submit-image") {
       const body = await readJsonBody(req);
       const content_id = String(body?.content_id ?? "").trim();
@@ -172,9 +197,7 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      let state = loadState(statePath);
-
-      const verification = await verifyWorldcoinProof({
+      const verification = await verifyWorldcoinProofV3({
         action,
         signal,
         proof,
@@ -185,10 +208,7 @@ const server = createServer(async (req, res) => {
       });
 
       if (!verification.success) {
-        sendJson(res, 401, {
-          error: "worldcoin proof verification failed",
-          detail: verification.detail,
-        });
+        sendJson(res, 401, { error: "worldcoin proof verification failed", detail: verification.detail });
         return;
       }
 
@@ -204,41 +224,16 @@ const server = createServer(async (req, res) => {
       };
 
       const payload = buildWorldcoinFirstEntry(
-        {
-          mode,
-          timestamp_ms,
-          content_id,
-          content_hash,
-          worldcoin_proof,
-        },
+        { mode, timestamp_ms, content_id, content_hash, worldcoin_proof },
         keyMaterial,
       );
 
-      state = appendSubmission(state, payload);
+      const state = appendSubmission(loadState(statePath), payload);
       saveState(statePath, state);
       mkdirSync(dataDir, { recursive: true });
       writeFileSync(latestPath, JSON.stringify(payload, null, 2), "utf8");
 
-      sendJson(res, 200, {
-        ok: true,
-        payload,
-        verification_environment: verification.environment,
-        latest_path: latestPath,
-      });
-      return;
-    }
-
-    if (req.method === "GET" && url.pathname === "/") {
-      sendText(
-        res,
-        200,
-        [
-          "worldcoin-miniapp backend",
-          "",
-          "POST /api/submit-image",
-          "GET  /healthz",
-        ].join("\n"),
-      );
+      sendJson(res, 200, { ok: true, payload, verification_environment: verification.environment, latest_path: latestPath });
       return;
     }
 
@@ -249,5 +244,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, hostname, () => {
-  console.log(`worldcoin-miniapp backend listening on http://${hostname}:${port}`);
+  console.log(`worldcoin-miniapp legacy backend listening on http://${hostname}:${port}`);
 });

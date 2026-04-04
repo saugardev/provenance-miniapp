@@ -65,7 +65,9 @@ export default function Page() {
   const [contentHash, setContentHash] = useState("");
   const [busyHash, setBusyHash] = useState(false);
 
-  // verification mode
+  // "legacy" → orbLegacy preset (World ID v3, Semaphore Merkle proof, merkle_root populated)
+  // "v4"     → proof_of_human constraint (World ID 4, no merkle_root)
+  // Docs: https://docs.world.org/world-id/idkit/integrate#choosing-a-preset
   const [mode, setMode] = useState<"legacy" | "v4">("legacy");
 
   // verification state
@@ -154,7 +156,9 @@ export default function Page() {
       setVerifyStatus("Connecting to World App...");
 
       // Step 2 — create IDKit request
-      // Signal is bound to the image hash so the proof is tied to this specific content
+      // signal is bound to the image hash so the proof is cryptographically tied to this content.
+      // allow_legacy_proofs must match the preset: true for orbLegacy (v3), false for v4.
+      // Docs: https://docs.world.org/world-id/idkit/integrate
       const builder = IDKit.request({
         app_id: APP_ID,
         action: ACTION,
@@ -168,6 +172,9 @@ export default function Page() {
         allow_legacy_proofs: mode === "legacy",
       });
 
+      // v3 (orbLegacy): returns IDKitResult with responses[0].merkle_root populated.
+      // v4 (proof_of_human): returns IDKitResult without merkle_root.
+      // Both shapes are forwarded as-is to the backend verify endpoint.
       const request = await (mode === "legacy"
         ? builder.preset(orbLegacy({ signal: contentHash }))
         : builder.constraints({ type: "proof_of_human", signal: contentHash }));
