@@ -4,25 +4,22 @@ import { resolveWorldcoinRpId } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
-type RpSignatureBody = {
-  action?: string;
-};
-
 export async function POST(request: Request): Promise<Response> {
   try {
-    const body = (await request.json().catch(() => ({}))) as RpSignatureBody;
-    const action = String(body?.action ?? "").trim();
+    const { action } = await request.json().catch(() => ({}));
     if (!action) {
       return NextResponse.json({ error: "action is required" }, { status: 400 });
     }
 
-    const signingKey = String(process.env.RP_SIGNING_KEY ?? "").trim();
+    const signingKey = process.env.RP_SIGNING_KEY?.trim() ?? "";
     if (!signingKey) {
-      return NextResponse.json({ error: "RP_SIGNING_KEY is required" }, { status: 500 });
+      return NextResponse.json({ error: "RP_SIGNING_KEY is not configured" }, { status: 500 });
     }
 
     const rpId = resolveWorldcoinRpId();
+    // signRequest returns { sig, nonce, createdAt, expiresAt }
     const { sig, nonce, createdAt, expiresAt } = signRequest(action, signingKey);
+
     return NextResponse.json({
       sig,
       nonce,

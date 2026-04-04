@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { appendSubmission, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
-import { verifyIdKitResponse } from "../../../lib/worldcoin-verify";
+import { verifyIdKitResponse, extractIdkitFields } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -12,34 +12,8 @@ type SubmitBody = {
   content_id?: string;
   content_hash?: string;
   timestamp_ms?: number;
-  idkit_response?: unknown;
+  idkitResponse?: unknown;
 };
-
-function isSha256Hash(v: string): boolean {
-  return /^sha256:[0-9a-f]{64}$/i.test(v);
-}
-
-// Extracts the key fields from an IDKitResult (v3 or v4)
-function extractIdkitFields(result: unknown): {
-  nullifier_hash: string;
-  verification_level: string;
-  action: string;
-  merkle_root: string;
-} {
-  const r = result as any;
-  const response0 = Array.isArray(r?.responses) ? r.responses[0] : undefined;
-
-  return {
-    // v3: nullifier, v4: nullifier (RP-scoped)
-    nullifier_hash: String(response0?.nullifier ?? response0?.nullifier_hash ?? "").trim(),
-    // v3/v4: identifier (e.g. "proof_of_human", "orb", "device")
-    verification_level: String(response0?.identifier ?? "").trim(),
-    // action is at the top level in v3/v4 uniqueness proofs
-    action: String(r?.action ?? "").trim(),
-    // v3 only — absent in v4 (embedded as 5th element of proof array)
-    merkle_root: String(response0?.merkle_root ?? "").trim(),
-  };
-}
 
 export async function POST(req: Request) {
   try {
@@ -47,84 +21,70 @@ export async function POST(req: Request) {
 
     const content_id = String(body?.content_id ?? "").trim();
     const content_hash = String(body?.content_hash ?? "").trim();
-    const timestamp_ms = Number.isFinite(Number(body?.timestamp_ms)) ? Number(body?.timestamp_ms) : Date.now();
+    const timestamp_ms = Number.isFinite(Number(body?.timestamp_ms)) ? Number(body.timestamp_ms) : Date.now();
 
     if (!content_id || !content_hash) {
-      return NextResponse.json({ error: "content_id, content_hash are required" }, { status: 400 });
+      return NextResponse.json({ error: "content_id and content_hash are required" }, { status: 400 });
     }
-    if (!isSha256Hash(content_hash)) {
-      return NextResponse.json({ error: "content_hash must match sha256:<64-hex>" }, { status: 400 });
+    if (!/^sha256:[0-9a-f]{64}$/i.test(content_hash)) {
+      return NextResponse.json({ error: "content_hash must be sha256:<64 hex chars>" }, { status: 400 });
     }
-    if (!body?.idkit_response) {
-      return NextResponse.json({ error: "idkit_response is required" }, { status: 400 });
+    if (!body?.idkitResponse) {
+      return NextResponse.json({ error: "idkitResponse is required" }, { status: 400 });
     }
 
-    const configuredAction = String(process.env.WORLDCOIN_ACTION ?? "").trim();
-    const signal = content_hash;
-
-    // Ensure action is always present — orbLegacy v3 results may omit it
-    const resultAction = String((body.idkit_response as any)?.action ?? "").trim();
+    const configuredAction = process.env.WORLDCOIN_ACTION?.trim() ?? "";
+    const resultAction = String((body.idkitResponse as any)?.action ?? "").trim();
     const action = configuredAction || resultAction || "upload-photo";
-    const idkitPayload = { ...(body.idkit_response as object), action };
 
-    // Verify the IDKit result directly — works for both v3 and v4 protocol versions
+    // Inject action if absent — orbLegacy (v3) results may omit it
+    const idkitPayload = { ...(body.idkitResponse as object), action };
+
+    // Verify proof — forwards raw IDKitResult to /api/v4/verify/{rp_id}
     const verification = await verifyIdKitResponse(idkitPayload);
-
     if (!verification.success) {
       return NextResponse.json(
-        {
-          error: "worldcoin proof verification failed",
-          detail: verification.detail,
-        },
+        { error: "World ID proof verification failed", detail: verification.detail },
         { status: 401 },
       );
     }
 
-    // Extract fields from the verified IDKit result
-    const { nullifier_hash, verification_level, merkle_root } = extractIdkitFields(idkitPayload);
+    const { nullifier, verificationLevel, merkleRoot } = extractIdkitFields(idkitPayload);
 
+    // Build and sign the Livy provenance payload
     const dataDir = resolve(process.cwd(), "state");
-    const statePath = resolve(dataDir, "backend-state.json");
-    const latestPath = resolve(dataDir, "latest-worldcoin-first-entry.json");
-    const privateKeyPath = resolve(dataDir, "signing_private_key.pem");
-    const publicKeyPath = resolve(dataDir, "signing_public_key.pem");
-    const keyMaterial = loadOrCreateKeyMaterial(privateKeyPath, publicKeyPath);
+    const keyMaterial = loadOrCreateKeyMaterial(
+      resolve(dataDir, "signing_private_key.pem"),
+      resolve(dataDir, "signing_public_key.pem"),
+    );
 
-    const worldcoin_proof: WorldcoinProof = {
+    const worldcoinProof: WorldcoinProof = {
       proof_status: "verified",
-      nullifier_hash,
-      miniapp_session_id: verification.session_id || `session-${timestamp_ms}`,
-      merkle_root,
-      verification_level,
-      version: undefined,
+      nullifier_hash: nullifier,
+      miniapp_session_id: verification.session_id ?? `session-${timestamp_ms}`,
+      merkle_root: merkleRoot,
+      verification_level: verificationLevel,
       action,
-      signal,
+      signal: content_hash,
     };
 
-    const mode = ((process.env.WORLDCOIN_MODE ?? "dev").toLowerCase() === "build" ? "build" : "dev") as "dev" | "build";
+    const mode = (process.env.WORLDCOIN_MODE?.toLowerCase() === "build" ? "build" : "dev") as "dev" | "build";
     const payload = buildWorldcoinFirstEntry(
-      {
-        mode,
-        timestamp_ms,
-        content_id,
-        content_hash,
-        worldcoin_proof,
-      },
+      { mode, timestamp_ms, content_id, content_hash, worldcoin_proof: worldcoinProof },
       keyMaterial,
     );
 
-    let state = loadState(statePath);
-    state = appendSubmission(state, payload);
-    saveState(statePath, state);
+    const statePath = resolve(dataDir, "backend-state.json");
+    const latestPath = resolve(dataDir, "latest-worldcoin-first-entry.json");
     mkdirSync(dataDir, { recursive: true });
+    saveState(statePath, appendSubmission(loadState(statePath), payload));
     writeFileSync(latestPath, JSON.stringify(payload, null, 2), "utf8");
 
     return NextResponse.json({
       ok: true,
       payload,
       verification_environment: verification.environment,
-      worldcoin_verification_result: verification.detail,
-      latest_path: latestPath,
+      verification_detail: verification.detail,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
