@@ -148,6 +148,7 @@ export default function Page() {
           payload,
           action: configuredAction,
           signal: contentHash,
+          nonce: requestedNonce,
         }),
       });
       const verifyJson = (await verifyResp.json()) as VerifyProofResponse;

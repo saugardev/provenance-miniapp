@@ -8,6 +8,7 @@ type VerifyProofBody = {
   payload?: ISuccessResult;
   action?: string;
   signal?: string;
+  nonce?: string;
 };
 
 export async function POST(request: Request): Promise<Response> {
@@ -22,6 +23,7 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "action is required (set WORLDCOIN_ACTION or send action)" }, { status: 400 });
     }
     const signal = body?.signal ? String(body.signal).trim() : undefined;
+    const nonceHint = String(body?.nonce ?? "").trim();
     const verifyRes = await verifyWorldcoinProof({
       action,
       signal,
@@ -29,7 +31,7 @@ export async function POST(request: Request): Promise<Response> {
       merkle_root: String(body.payload.merkle_root ?? ""),
       nullifier_hash: String(body.payload.nullifier_hash ?? ""),
       verification_level: String(body.payload.verification_level ?? ""),
-      nonce: String((body.payload as any).nonce ?? ""),
+      nonce: String((body.payload as any).nonce ?? nonceHint),
     });
     const status = verifyRes.success ? 200 : 401;
     return NextResponse.json(
