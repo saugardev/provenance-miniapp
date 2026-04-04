@@ -1,48 +1,37 @@
 import { NextResponse } from "next/server";
-import { verifyIdKitResponseFlexible } from "../../../lib/worldcoin-verify";
+import { verifyCloudProof, type IVerifyResponse, type ISuccessResult } from "@worldcoin/minikit-js";
 
 export const runtime = "nodejs";
 
 type VerifyProofBody = {
-  idkitResponse?: unknown;
-  hints?: {
-    action?: string;
-    signal?: string;
-    nonce?: string;
-  };
+  payload?: ISuccessResult;
+  action?: string;
+  signal?: string;
 };
 
 export async function POST(request: Request): Promise<Response> {
   try {
     const body = (await request.json().catch(() => ({}))) as VerifyProofBody;
-    if (!body?.idkitResponse) {
-      return NextResponse.json({ error: "idkitResponse is required" }, { status: 400 });
+    if (!body?.payload) {
+      return NextResponse.json({ error: "payload is required" }, { status: 400 });
     }
+    const action = String(body?.action ?? "").trim();
+    if (!action) {
+      return NextResponse.json({ error: "action is required" }, { status: 400 });
+    }
+    const signal = body?.signal ? String(body.signal).trim() : undefined;
+    const appIdRaw = String(process.env.APP_ID ?? process.env.WORLDCOIN_APP_ID ?? process.env.WORLDCOIN_RP_ID ?? "").trim();
+    if (!appIdRaw.startsWith("app_")) {
+      return NextResponse.json({ error: "APP_ID (app_...) is required for MiniKit cloud verification" }, { status: 500 });
+    }
+    const appId = appIdRaw as `app_${string}`;
 
-    const raw = body.idkitResponse as any;
-    const actionHint = String(body?.hints?.action ?? "").trim();
-    const signalHint = String(body?.hints?.signal ?? "").trim();
-    const nonceHint = String(body?.hints?.nonce ?? "").trim();
-    const withHints =
-      raw && typeof raw === "object"
-        ? {
-            ...raw,
-            action: String(raw?.action ?? (actionHint || "upload_photo")),
-            signal: String(raw?.signal ?? signalHint),
-            nonce: String(raw?.nonce ?? nonceHint),
-          }
-        : raw;
-
-    const verification = await verifyIdKitResponseFlexible(withHints);
-    const status = verification.success ? 200 : 401;
+    const verifyRes = (await verifyCloudProof(body.payload, appId, action, signal)) as IVerifyResponse;
+    const status = verifyRes.success ? 200 : 401;
     return NextResponse.json(
       {
-        success: verification.success,
-        environment: verification.environment,
-        session_id: verification.session_id,
-        detail: verification.detail,
-        used_payload: verification.used_payload,
-        parsed: verification.parsed,
+        success: verifyRes.success,
+        detail: verifyRes,
       },
       { status },
     );

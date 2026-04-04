@@ -26,56 +26,10 @@ type SubmitResponse = {
 type VerifyProofResponse = {
   success: boolean;
   detail?: unknown;
-  used_payload?: unknown;
 };
 
 function asVerificationLevel(value: string): VerificationLevel {
   return value as VerificationLevel;
-}
-
-function extractIdKitResponse(
-  raw: any,
-  action: string,
-  signal: string,
-  defaultLevel: string,
-  fallbackNonce?: string,
-): any | null {
-  if (!raw || typeof raw !== "object") return null;
-
-  if (Array.isArray(raw.responses) && raw.responses.length > 0) {
-    if (fallbackNonce && !raw.responses[0]?.nonce) {
-      return {
-        ...raw,
-        responses: [
-          {
-            ...raw.responses[0],
-            nonce: fallbackNonce,
-          },
-          ...raw.responses.slice(1),
-        ],
-      };
-    }
-    return raw;
-  }
-
-  if (raw.proof && raw.merkle_root && raw.nullifier_hash) {
-    return {
-      action,
-      signal,
-      protocol_version: String(raw.protocol_version ?? "3.0"),
-      responses: [
-        {
-          proof: String(raw.proof),
-          merkle_root: String(raw.merkle_root),
-          nullifier: String(raw.nullifier_hash),
-          identifier: String(raw.verification_level ?? defaultLevel),
-          nonce: String(raw.nonce ?? fallbackNonce ?? ""),
-        },
-      ],
-    };
-  }
-
-  return null;
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -181,46 +135,35 @@ export default function Page() {
       const out = await MiniKit.commandsAsync.verify(verifyInput);
 
       const anyOut = out as any;
-      const payload = anyOut?.finalPayload ?? anyOut?.payload ?? anyOut ?? {};
+      const payload = (anyOut?.finalPayload ?? anyOut?.payload ?? anyOut ?? {}) as any;
       const requestedNonce = String(anyOut?.nonce ?? payload?.nonce ?? "").trim() || crypto.randomUUID();
-      const normalizedIdkit =
-        extractIdKitResponse(anyOut, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb", requestedNonce) ??
-        extractIdKitResponse(payload, proof.action.trim(), contentHash, proof.verification_level.trim() || "orb", requestedNonce);
-      if (!normalizedIdkit) {
-        throw new Error("MiniKit response did not include a valid IDKit payload.");
+      if (!payload?.proof || !payload?.merkle_root || !payload?.nullifier_hash) {
+        throw new Error("MiniKit response did not include proof/merkle_root/nullifier_hash.");
       }
       const verifyResp = await fetch("/api/verify-proof", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          idkitResponse: anyOut,
-          hints: {
-            action: proof.action.trim(),
-            signal: contentHash,
-            nonce: requestedNonce,
-          },
+          payload,
+          action: proof.action.trim(),
+          signal: contentHash,
         }),
       });
       const verifyJson = (await verifyResp.json()) as VerifyProofResponse;
       if (!verifyResp.ok || !verifyJson?.success) {
         throw new Error(`Backend verify failed: ${JSON.stringify(verifyJson?.detail ?? verifyJson)}`);
       }
-      setIdkitResponse(verifyJson.used_payload ?? anyOut);
+      setIdkitResponse(payload);
       setVerifiedByBackend(true);
 
-      const resp0 = Array.isArray(normalizedIdkit?.responses) ? normalizedIdkit.responses[0] : undefined;
       const nextProof = {
-        proof: String(resp0?.proof ?? payload?.proof ?? ""),
-        merkle_root: String(resp0?.merkle_root ?? payload?.merkle_root ?? ""),
-        nullifier_hash: String(resp0?.nullifier ?? resp0?.nullifier_hash ?? payload?.nullifier_hash ?? ""),
-        nonce: String(resp0?.nonce ?? normalizedIdkit?.nonce ?? payload?.nonce ?? requestedNonce ?? ""),
-        verification_level: String(resp0?.identifier ?? payload?.verification_level ?? proof.verification_level),
+        proof: String(payload?.proof ?? ""),
+        merkle_root: String(payload?.merkle_root ?? ""),
+        nullifier_hash: String(payload?.nullifier_hash ?? ""),
+        nonce: String(payload?.nonce ?? requestedNonce ?? ""),
+        verification_level: String(payload?.verification_level ?? proof.verification_level),
         version:
-          normalizedIdkit?.protocol_version != null
-            ? String(normalizedIdkit.protocol_version)
-            : payload?.version != null
-              ? String(payload.version)
-              : proof.version,
+          payload?.version != null ? String(payload.version) : proof.version,
       };
 
       if (!nextProof.proof || !nextProof.merkle_root || !nextProof.nullifier_hash) {
@@ -256,7 +199,7 @@ export default function Page() {
         content_id: contentId.trim(),
         content_hash: contentHash,
         timestamp_ms: Date.now(),
-        idkit_response: idkitResponse ?? undefined,
+        miniapp_payload: idkitResponse ?? undefined,
         worldcoin_proof: {
           action: proof.action.trim(),
           signal: contentHash,

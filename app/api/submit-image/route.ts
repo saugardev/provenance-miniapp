@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { verifyCloudProof, type IVerifyResponse, type ISuccessResult } from "@worldcoin/minikit-js";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { appendSubmission, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
@@ -12,6 +13,7 @@ type SubmitBody = {
   content_id?: string;
   content_hash?: string;
   timestamp_ms?: number;
+  miniapp_payload?: ISuccessResult;
   idkit_response?: unknown;
   worldcoin_proof?: {
     action?: string;
@@ -58,7 +60,26 @@ export async function POST(req: Request) {
     let nonce = String(proofInput?.nonce ?? "").trim();
 
     let verification;
-    if (body?.idkit_response) {
+    if (body?.miniapp_payload) {
+      const actionForVerify = action || "upload_photo";
+      const appIdRaw = String(process.env.APP_ID ?? process.env.WORLDCOIN_APP_ID ?? process.env.WORLDCOIN_RP_ID ?? "").trim();
+      if (!appIdRaw.startsWith("app_")) {
+        return NextResponse.json({ error: "APP_ID (app_...) is required for MiniKit cloud verification" }, { status: 500 });
+      }
+      const appId = appIdRaw as `app_${string}`;
+      const verifyRes = (await verifyCloudProof(body.miniapp_payload, appId, actionForVerify, signal)) as IVerifyResponse;
+      verification = {
+        success: verifyRes.success,
+        detail: verifyRes,
+        environment: undefined,
+        session_id: undefined,
+      };
+      proof = String(body.miniapp_payload.proof ?? proof).trim();
+      merkle_root = String(body.miniapp_payload.merkle_root ?? merkle_root).trim();
+      nullifier_hash = String(body.miniapp_payload.nullifier_hash ?? nullifier_hash).trim();
+      verification_level = String(body.miniapp_payload.verification_level ?? verification_level).trim();
+      action = actionForVerify;
+    } else if (body?.idkit_response) {
       const raw = body.idkit_response as any;
       const idkitWithHints = {
         ...(raw && typeof raw === "object" ? raw : {}),
