@@ -49,6 +49,7 @@ export default function Page() {
   const [busyHash, setBusyHash] = useState(false);
   const [busySubmit, setBusySubmit] = useState(false);
   const [busyWorldVerify, setBusyWorldVerify] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState("");
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [error, setError] = useState("");
 
@@ -85,6 +86,7 @@ export default function Page() {
 
   async function fillFromIDKit() {
     setBusyWorldVerify(true);
+    setVerifyStatus("Requesting RP signature...");
     setError("");
     setIdkitResult(null);
     setVerifiedByBackend(false);
@@ -108,6 +110,8 @@ export default function Page() {
       }
       const rpData = (await rpResp.json()) as RpSignatureResponse;
 
+      setVerifyStatus("Waiting for World App...");
+
       // 2. Create IDKit request with RP context
       const request = await IDKit.request({
         app_id: appId,
@@ -122,14 +126,30 @@ export default function Page() {
         allow_legacy_proofs: true,
       }).preset(orbLegacy({ signal: contentHash }));
 
-      // 3. Wait for World App to return proof (postMessage in mini app, QR + polling on web)
-      const completion = await request.pollUntilCompletion();
+      // 3. Poll with status updates so the user can see progress
+      let completion;
+      while (true) {
+        const status = await request.pollOnce();
+        if (status.type === "waiting_for_connection") {
+          setVerifyStatus("Open World App to approve...");
+        } else if (status.type === "awaiting_confirmation") {
+          setVerifyStatus("Generating proof (this takes ~30-60s)...");
+        } else if (status.type === "confirmed") {
+          completion = { success: true as const, result: status.result! };
+          break;
+        } else {
+          completion = { success: false as const, error: status.error! };
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
       if (!completion.success) {
         throw new Error(`World ID verification failed: ${completion.error}`);
       }
       const idResult = completion.result;
 
       // 4. Verify proof on backend
+      setVerifyStatus("Verifying proof on backend...");
       const verifyResp = await fetch("/api/verify-proof", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -146,8 +166,10 @@ export default function Page() {
 
       setIdkitResult(idResult);
       setVerifiedByBackend(true);
+      setVerifyStatus("");
     } catch (err) {
       setError(`World verify failed: ${String(err)}`);
+      setVerifyStatus("");
     } finally {
       setBusyWorldVerify(false);
     }
@@ -229,6 +251,7 @@ export default function Page() {
         <button className="button secondary" disabled={busyWorldVerify} onClick={fillFromIDKit}>
           {busyWorldVerify ? "Verifying..." : "Verify with World ID"}
         </button>
+        {verifyStatus ? <p className="hint">{verifyStatus}</p> : null}
         <p className="hint">IDKit result: {idkitResult ? `captured (protocol ${(idkitResult as any).protocol_version})` : "not captured yet"}</p>
         <p className="hint">Backend verify: {verifiedByBackend ? "success" : "pending"}</p>
 
