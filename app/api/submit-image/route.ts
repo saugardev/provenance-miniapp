@@ -66,6 +66,24 @@ export async function POST(req: Request) {
       nullifier_hash = String(verification.parsed?.nullifier_hash ?? nullifier_hash).trim();
       verification_level = String(verification.parsed?.verification_level ?? verification_level).trim();
       nonce = String(verification.parsed?.nonce ?? nonce).trim();
+
+      // Some MiniKit payload variants omit nonce in the first candidate.
+      // If World explicitly asks for nonce and we have one from UI/fallback, retry once.
+      const nonceRequired =
+        !verification.success &&
+        String((verification.detail as any)?.payload?.attribute ?? "") === "nonce" &&
+        /required/i.test(String((verification.detail as any)?.payload?.detail ?? ""));
+      if (nonceRequired && nonce) {
+        verification = await verifyWorldcoinProof({
+          action,
+          signal,
+          proof,
+          merkle_root,
+          nullifier_hash,
+          verification_level,
+          nonce,
+        });
+      }
     } else {
       if (!action || !proof || !merkle_root || !nullifier_hash || !verification_level) {
         return NextResponse.json(

@@ -160,7 +160,7 @@ export default function Page() {
       if (!normalizedIdkit) {
         throw new Error("MiniKit response did not include a valid IDKit payload.");
       }
-      setIdkitResponse(normalizedIdkit);
+      setIdkitResponse(anyOut);
 
       const resp0 = Array.isArray(normalizedIdkit?.responses) ? normalizedIdkit.responses[0] : undefined;
       const nextProof = {
