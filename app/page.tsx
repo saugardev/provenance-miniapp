@@ -66,6 +66,7 @@ export default function Page() {
   const [file, setFile] = useState<File | null>(null);
   const [contentId, setContentId] = useState("photo-001");
   const [contentHash, setContentHash] = useState("");
+  const [mode, setMode] = useState<"legacy" | "v4">("legacy");
   const [idkitResult, setIdkitResult] = useState<IDKitResult | null>(null);
   const [verifiedByBackend, setVerifiedByBackend] = useState(false);
   const [busyHash, setBusyHash] = useState(false);
@@ -107,6 +108,16 @@ export default function Page() {
     }
   }
 
+  function switchMode(next: "legacy" | "v4") {
+    setMode(next);
+    setIdkitResult(null);
+    setVerifiedByBackend(false);
+    setError("");
+    setResult(null);
+    setVerifyStatus("");
+    setConnectorURI("");
+  }
+
   async function fillFromIDKit() {
     setBusyWorldVerify(true);
     setVerifyStatus("Requesting RP signature...");
@@ -137,7 +148,7 @@ export default function Page() {
       setVerifyStatus("Connecting to World App...");
 
       // 2. Create IDKit request with RP context
-      const request = await IDKit.request({
+      const builder = IDKit.request({
         app_id: appId,
         action: configuredAction,
         rp_context: {
@@ -147,8 +158,12 @@ export default function Page() {
           expires_at: rpData.expires_at,
           signature: rpData.sig,
         },
-        allow_legacy_proofs: true,
-      }).preset(orbLegacy({ signal: contentHash }));
+        allow_legacy_proofs: mode === "legacy",
+      });
+
+      const request = await (mode === "legacy"
+        ? builder.preset(orbLegacy({ signal: contentHash }))
+        : builder.constraints({ type: "proof_of_human", signal: contentHash }));
 
       // connectorURI is empty when inside World App (postMessage mode)
       // non-empty means web/bridge mode — show link so user can open in World App
@@ -162,13 +177,13 @@ export default function Page() {
 
       // 3. Poll with status updates, hard timeout of 3 minutes
       let completion;
-      const deadline = Date.now() + 3 * 60 * 1000;
+      const deadline = Date.now() + 90 * 1000;
       let elapsed = 0;
       while (true) {
         if (Date.now() > deadline) {
           throw new Error(
-            "Proof generation timed out (3 min). If you were recently orb-verified, " +
-            "your inclusion proof may still be pending on-chain — wait a few hours and try again.",
+            "World App did not return a proof within 90s. Since you were recently orb-verified, " +
+            "your inclusion proof is likely still pending on-chain. Wait a few hours (up to 24h) and try again.",
           );
         }
         const status = await request.pollOnce();
@@ -280,7 +295,15 @@ export default function Page() {
 
         <p className="hint">{busyHash ? "Hashing image..." : hashPreview ? `Hash ready: ${hashPreview}` : "Select an image to compute SHA-256."}</p>
 
-        <h2>World ID 4.0 Proof</h2>
+        <h2>World ID Proof</h2>
+        <div className="tabs">
+          <button className={`tab${mode === "legacy" ? " active" : ""}`} onClick={() => switchMode("legacy")}>
+            Orb Legacy (v3)
+          </button>
+          <button className={`tab${mode === "v4" ? " active" : ""}`} onClick={() => switchMode("v4")}>
+            World ID 4.0
+          </button>
+        </div>
         <div className="row two">
           <label className="field">
             <span>action</span>
@@ -304,6 +327,7 @@ export default function Page() {
             </a>
           </div>
         ) : null}
+        <p className="hint">Mode: {mode === "legacy" ? "Orb Legacy (protocol 3.0)" : "World ID 4.0 (protocol 4.0)"}</p>
         <p className="hint">IDKit result: {idkitResult ? `✅ captured (protocol ${(idkitResult as any).protocol_version})` : "not captured yet"}</p>
         <p className="hint">Backend verify: {verifiedByBackend ? "✅ success" : "pending"}</p>
 

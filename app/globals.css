@@ -94,6 +94,33 @@ textarea {
   cursor: wait;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #2d2d2d;
+  padding-bottom: 0;
+}
+
+.tab {
+  padding: 8px 16px;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: -1px;
+}
+
+.tab.active {
+  border-color: #2d2d2d;
+  border-bottom-color: #141414;
+  background: #141414;
+  color: #fff;
+}
+
 .result {
   margin-top: 16px;
   border: 1px solid #303030;

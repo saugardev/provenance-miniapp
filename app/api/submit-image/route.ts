@@ -62,8 +62,13 @@ export async function POST(req: Request) {
     const configuredAction = String(process.env.WORLDCOIN_ACTION ?? "").trim();
     const signal = content_hash;
 
+    // Ensure action is always present — orbLegacy v3 results may omit it
+    const resultAction = String((body.idkit_response as any)?.action ?? "").trim();
+    const action = configuredAction || resultAction || "upload-photo";
+    const idkitPayload = { ...(body.idkit_response as object), action };
+
     // Verify the IDKit result directly — works for both v3 and v4 protocol versions
-    const verification = await verifyIdKitResponse(body.idkit_response);
+    const verification = await verifyIdKitResponse(idkitPayload);
 
     if (!verification.success) {
       return NextResponse.json(
@@ -76,8 +81,7 @@ export async function POST(req: Request) {
     }
 
     // Extract fields from the verified IDKit result
-    const { nullifier_hash, verification_level, action: resultAction, merkle_root } = extractIdkitFields(body.idkit_response);
-    const action = configuredAction || resultAction || "upload-photo";
+    const { nullifier_hash, verification_level, merkle_root } = extractIdkitFields(idkitPayload);
 
     const dataDir = resolve(process.cwd(), "state");
     const statePath = resolve(dataDir, "backend-state.json");

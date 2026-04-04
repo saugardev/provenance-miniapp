@@ -18,7 +18,12 @@ export async function POST(request: Request): Promise<Response> {
     const configuredAction = String(process.env.WORLDCOIN_ACTION ?? "").trim();
     const action = String((body.idkit_result as any)?.action ?? body?.action ?? configuredAction).trim();
 
-    const verifyRes = await verifyIdKitResponse(body.idkit_result);
+    // Ensure action is always present in the payload sent to World API
+    const idkitPayload = action
+      ? { ...(body.idkit_result as object), action }
+      : body.idkit_result;
+
+    const verifyRes = await verifyIdKitResponse(idkitPayload);
     const status = verifyRes.success ? 200 : 401;
     return NextResponse.json(
       {
