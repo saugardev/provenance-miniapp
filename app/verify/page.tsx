@@ -130,6 +130,7 @@ export default function Page() {
 
   // sign/upload state
   const [busySign, setBusySign] = useState(false);
+  const [busyOg, setBusyOg] = useState(false);
   const [busyUpload, setBusyUpload] = useState(false);
   const [actionResult, setActionResult] = useState<SubmitResponse | null>(null);
   const [apiFailure, setApiFailure] = useState<ApiFailure | null>(null);
@@ -423,6 +424,47 @@ export default function Page() {
     }
   }
 
+  async function publishOg() {
+    if (!signedPayload) {
+      setError("Sign provenance first.");
+      return;
+    }
+
+    setBusyOg(true);
+    setError("");
+    setActionResult(null);
+    setApiFailure(null);
+
+    try {
+      const resp = await fetch("/api/publish-og", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          signed_payload: signedPayload,
+        }),
+      });
+      const data = (await resp.json()) as SubmitResponse;
+      setActionResult(data);
+      if (!resp.ok) {
+        setApiFailure({
+          endpoint: "/api/publish-og",
+          status: resp.status,
+          statusText: resp.statusText,
+          body: data,
+        });
+        setError(
+          data.error
+            ? `${data.error} (HTTP ${resp.status})`
+            : `Request failed (${resp.status} ${resp.statusText})`,
+        );
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusyOg(false);
+    }
+  }
+
   function captureGpsLocation() {
     if (!navigator.geolocation) {
       setError("Geolocation is not supported in this browser.");
@@ -599,10 +641,17 @@ export default function Page() {
           </button>
           <button
             className="button"
+            disabled={busySign || busyOg || !signedPayload}
+            onClick={publishOg}
+          >
+            {busyOg ? "Submitting..." : "Submit to 0G"}
+          </button>
+          <button
+            className="button"
             disabled={busySign || busyUpload || !signedPayload}
             onClick={upload}
           >
-            {busyUpload ? "Uploading..." : "Upload image"}
+            {busyUpload ? "Submitting..." : "Submit to backend"}
           </button>
         </div>
         <p className="hint">Signature: {signedPayload ? "✅ created" : "not created yet"}</p>

@@ -13,11 +13,15 @@ export type OgStorageReceipt = {
   enabled: boolean;
   published: boolean;
   reason?: string;
+  error?: string;
   payload_sha256: string;
   payload_bytes: number;
   key: string;
   root_hashes: string[];
   tx_hashes: string[];
+  wallet_address?: string;
+  chain_id?: string;
+  wallet_balance_wei?: string;
   evm_rpc?: string;
   indexer_rpc?: string;
   uploaded_at_ms?: number;
@@ -79,34 +83,58 @@ export async function publishPayloadTo0g(input: {
   try {
     const provider = new JsonRpcProvider(evmRpc);
     const signer = new Wallet(privateKey, provider);
+    const network = await provider.getNetwork();
+    const balance = await provider.getBalance(signer.address);
     const indexer = new Indexer(indexerRpc);
     file = await ZgFile.fromFilePath(tmpPath);
 
-    const [tx, err] = await indexer.upload(file, evmRpc, signer);
-    if (err) {
-      throw err;
-    }
-    if (!tx) {
-      throw new Error("0G upload returned no transaction metadata.");
-    }
+    try {
+      const [tx, err] = await indexer.upload(file, evmRpc, signer);
+      if (err) {
+        throw err;
+      }
+      if (!tx) {
+        throw new Error("0G upload returned no transaction metadata.");
+      }
 
-    const txHash = "txHash" in tx ? tx.txHash : undefined;
-    const rootHash = "rootHash" in tx ? tx.rootHash : undefined;
-    const txHashes = "txHashes" in tx ? tx.txHashes : undefined;
-    const rootHashes = "rootHashes" in tx ? tx.rootHashes : undefined;
+      const txHash = "txHash" in tx ? tx.txHash : undefined;
+      const rootHash = "rootHash" in tx ? tx.rootHash : undefined;
+      const txHashes = "txHashes" in tx ? tx.txHashes : undefined;
+      const rootHashes = "rootHashes" in tx ? tx.rootHashes : undefined;
 
-    return {
-      enabled: true,
-      published: true,
-      payload_sha256: payloadSha256,
-      payload_bytes: jsonBytes.byteLength,
-      key: storageKey,
-      root_hashes: toArray(rootHash).concat(toArray(rootHashes)),
-      tx_hashes: toArray(txHash).concat(toArray(txHashes)),
-      evm_rpc: evmRpc,
-      indexer_rpc: indexerRpc,
-      uploaded_at_ms: Date.now(),
-    };
+      return {
+        enabled: true,
+        published: true,
+        payload_sha256: payloadSha256,
+        payload_bytes: jsonBytes.byteLength,
+        key: storageKey,
+        root_hashes: toArray(rootHash).concat(toArray(rootHashes)),
+        tx_hashes: toArray(txHash).concat(toArray(txHashes)),
+        wallet_address: signer.address,
+        chain_id: String(network.chainId),
+        wallet_balance_wei: balance.toString(),
+        evm_rpc: evmRpc,
+        indexer_rpc: indexerRpc,
+        uploaded_at_ms: Date.now(),
+      };
+    } catch (error) {
+      return {
+        enabled: true,
+        published: false,
+        reason: "0G upload transaction failed.",
+        error: error instanceof Error ? error.message : String(error),
+        payload_sha256: payloadSha256,
+        payload_bytes: jsonBytes.byteLength,
+        key: storageKey,
+        root_hashes: [],
+        tx_hashes: [],
+        wallet_address: signer.address,
+        chain_id: String(network.chainId),
+        wallet_balance_wei: balance.toString(),
+        evm_rpc: evmRpc,
+        indexer_rpc: indexerRpc,
+      };
+    }
   } finally {
     if (file) {
       await file.close().catch(() => undefined);

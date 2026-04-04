@@ -53,7 +53,8 @@ Then it verifies `/api/verify-proof` and `/api/submit-image` end-to-end and prin
 - `GET /api/attestations`
 - `POST /api/rp-signature` (generates RP signature for IDKit connect flow)
 - `POST /api/verify-proof` (forwards raw `idkitResponse` to `/api/v4/verify/{rp_id}`)
-- `POST /api/sign-provenance` (creates signed payload; also uploads to 0G when configured)
+- `POST /api/sign-provenance` (creates signed payload only)
+- `POST /api/publish-og` (publishes signed payload to 0G when requested)
 - `POST /api/submit-image`
 
 Example submit:

@@ -142,6 +142,7 @@ export default function CapturePage() {
   const autoSignAfterVerifyRef = useRef(false);
 
   const [busySign, setBusySign] = useState(false);
+  const [busyOg, setBusyOg] = useState(false);
   const [busyUpload, setBusyUpload] = useState(false);
   const [signedPayload, setSignedPayload] = useState<unknown>(null);
   const [result, setResult] = useState<SubmitResponse | null>(null);
@@ -540,6 +541,34 @@ export default function CapturePage() {
     }
   }
 
+  async function publishToOg() {
+    if (!signedPayload) {
+      setError("Prove humanity first.");
+      return;
+    }
+
+    setBusyOg(true);
+    setError("");
+    setResult(null);
+
+    try {
+      const resp = await fetch("/api/publish-og", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          signed_payload: signedPayload,
+        }),
+      });
+      const data = (await resp.json()) as SubmitResponse;
+      setResult(data);
+      if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusyOg(false);
+    }
+  }
+
   return (
     <main className={`${styles.page} ${manrope.className}`}>
       <canvas ref={canvasRef} className={styles.hidden} />
@@ -654,8 +683,11 @@ export default function CapturePage() {
           <p className={styles.caption}>Signature: {signedPayload ? "Created" : "Not created"}</p>
 
           <div className={styles.actions}>
+            <button className={styles.primary} disabled={!signedPayload || busyOg} onClick={publishToOg}>
+              {busyOg ? "Submitting..." : "Submit to 0G"}
+            </button>
             <button className={styles.primary} disabled={!signedPayload || busyUpload} onClick={uploadImage}>
-              {busyUpload ? "Uploading..." : "Upload"}
+              {busyUpload ? "Submitting..." : "Submit to backend"}
             </button>
           </div>
 

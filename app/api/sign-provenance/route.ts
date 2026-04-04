@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
-import { publishPayloadTo0g } from "../../../src/og-storage.ts";
 import { appendSubmission, hasSubmissionForNullifierAction, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
 import {
@@ -144,12 +143,6 @@ export async function POST(req: Request) {
       { mode, timestamp_ms, content_id, content_hash, worldcoin_proof: worldcoinProof },
       keyMaterial,
     );
-    const ogStorage = await publishPayloadTo0g({
-      payload,
-      nullifierHash: nullifier,
-      action,
-      contentId: content_id,
-    });
 
     mkdirSync(dataDir, { recursive: true });
     saveState(statePath, appendSubmission(state, payload));
@@ -166,7 +159,6 @@ export async function POST(req: Request) {
       verification_level: verificationLevel,
       verification_environment: verification.environment,
       verification_detail: verification.detail,
-      og_storage: ogStorage,
     });
   } catch (err) {
     console.error("[sign-provenance] unhandled error:", err);
