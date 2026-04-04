@@ -196,12 +196,14 @@ export default function Page() {
         setVerifyStatus("Approve the request in World App...");
       }
 
-      // Step 3 — poll for result with live status updates (orbLegacy can take many minutes)
-      const deadline = Date.now() + pollBudgetMs;
-      let elapsed = 0;
-
-      while (true) {
-        if (Date.now() > deadline) {
+      // Step 3 — wait for a terminal result using IDKit's completion API
+      setVerifyStatus("Waiting for World App confirmation...");
+      const completion = await request.pollUntilCompletion({
+        pollInterval: 2_000,
+        timeout: pollBudgetMs,
+      });
+      if (!completion.success) {
+        if (completion.error === IDKitErrorCodes.Timeout) {
           const mins = Math.round(pollBudgetMs / 60_000);
           throw new Error(
             `Timed out waiting for World App (${mins} min). ` +
@@ -211,42 +213,30 @@ export default function Page() {
                 : "Try again or check your connection to World App."),
           );
         }
-
-        const status = await request.pollOnce();
-
-        if (status.type === "waiting_for_connection") {
-          setVerifyStatus("Waiting for World App to connect...");
-        } else if (status.type === "awaiting_confirmation") {
-          setConnectorURI("");
-          elapsed += 1;
-          setVerifyStatus(`Generating ZK proof in World App... (${elapsed}s)`);
-        } else if (status.type === "confirmed") {
-          const idResult = status.result!;
-
-          // Step 4 — verify proof on backend
-          setVerifyStatus("Verifying proof on backend...");
-          const verifyResp = await fetch("/api/verify-proof", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ rp_id: rp.rp_id, idkitResponse: idResult }),
-          });
-          const verifyJson = await verifyResp.json();
-          if (!verifyResp.ok || !verifyJson?.success) {
-            throw new Error(`Backend verification failed: ${JSON.stringify(verifyJson?.detail ?? verifyJson)}`);
-          }
-
-          setIdkitResult(idResult);
-          setVerifiedByBackend(true);
-          setVerifyStatus("");
-          setConnectorURI("");
-          break;
-        } else {
-          // failed
-          throw new Error(idkitErrorMessage(status.error ?? IDKitErrorCodes.GenericError));
+        if (completion.error === IDKitErrorCodes.Cancelled) {
+          throw new Error("Verification was cancelled in World App.");
         }
-
-        await new Promise((r) => setTimeout(r, 1000));
+        throw new Error(idkitErrorMessage(completion.error));
       }
+
+      const idResult = completion.result;
+
+      // Step 4 — verify proof on backend
+      setVerifyStatus("Verifying proof on backend...");
+      const verifyResp = await fetch("/api/verify-proof", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rp_id: rp.rp_id, idkitResponse: idResult }),
+      });
+      const verifyJson = await verifyResp.json();
+      if (!verifyResp.ok || !verifyJson?.success) {
+        throw new Error(`Backend verification failed: ${JSON.stringify(verifyJson?.detail ?? verifyJson)}`);
+      }
+
+      setIdkitResult(idResult);
+      setVerifiedByBackend(true);
+      setVerifyStatus("");
+      setConnectorURI("");
     } catch (err) {
       setError(String(err));
       setVerifyStatus("");
