@@ -5,6 +5,11 @@ export const runtime = "nodejs";
 
 type VerifyProofBody = {
   idkitResponse?: unknown;
+  hints?: {
+    action?: string;
+    signal?: string;
+    nonce?: string;
+  };
 };
 
 export async function POST(request: Request): Promise<Response> {
@@ -14,7 +19,21 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "idkitResponse is required" }, { status: 400 });
     }
 
-    const verification = await verifyIdKitResponseFlexible(body.idkitResponse);
+    const raw = body.idkitResponse as any;
+    const actionHint = String(body?.hints?.action ?? "").trim();
+    const signalHint = String(body?.hints?.signal ?? "").trim();
+    const nonceHint = String(body?.hints?.nonce ?? "").trim();
+    const withHints =
+      raw && typeof raw === "object"
+        ? {
+            ...raw,
+            action: String(raw?.action ?? (actionHint || "upload_photo")),
+            signal: String(raw?.signal ?? signalHint),
+            nonce: String(raw?.nonce ?? nonceHint),
+          }
+        : raw;
+
+    const verification = await verifyIdKitResponseFlexible(withHints);
     const status = verification.success ? 200 : 401;
     return NextResponse.json(
       {

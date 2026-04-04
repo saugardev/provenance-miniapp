@@ -192,7 +192,14 @@ export default function Page() {
       const verifyResp = await fetch("/api/verify-proof", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idkitResponse: anyOut }),
+        body: JSON.stringify({
+          idkitResponse: anyOut,
+          hints: {
+            action: proof.action.trim(),
+            signal: contentHash,
+            nonce: requestedNonce,
+          },
+        }),
       });
       const verifyJson = (await verifyResp.json()) as VerifyProofResponse;
       if (!verifyResp.ok || !verifyJson?.success) {
