@@ -1,7 +1,8 @@
 "use client";
 
 import { IDKitRequestWidget, orbLegacy, IDKitErrorCodes, type IDKitResult, type RpContext } from "@worldcoin/idkit";
-import { ChangeEvent, useMemo, useState } from "react";
+import { MiniKit, VerificationLevel, type MiniAppVerifyActionPayload } from "@worldcoin/minikit-js";
+import { ChangeEvent, useMemo, useRef, useState } from "react";
 
 // ---- types ----------------------------------------------------------------
 
@@ -20,6 +21,19 @@ type SubmitResponse = {
   error?: string;
   detail?: unknown;
 };
+
+type MiniAppProof = {
+  proof: string;
+  merkle_root: string;
+  nullifier_hash: string;
+  verification_level: string;
+};
+
+type VerificationPayload =
+  | { kind: "idkit"; idkitResponse: IDKitResult }
+  | { kind: "minikit"; proof: MiniAppProof };
+
+type MiniAppVerifySuccessPayload = Extract<MiniAppVerifyActionPayload, { status: "success" }>;
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -76,12 +90,13 @@ export default function Page() {
   const [busyHash, setBusyHash] = useState(false);
 
   // verification state
-  const [idkitResult, setIdkitResult] = useState<IDKitResult | null>(null);
+  const [verificationPayload, setVerificationPayload] = useState<VerificationPayload | null>(null);
   const [verifiedByBackend, setVerifiedByBackend] = useState(false);
   const [busyVerify, setBusyVerify] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState("");
   const [widgetOpen, setWidgetOpen] = useState(false);
   const [rpContext, setRpContext] = useState<RpContext | null>(null);
+  const verifySucceededRef = useRef(false);
 
   // submit state
   const [busySubmit, setBusySubmit] = useState(false);
@@ -116,9 +131,13 @@ export default function Page() {
     setFile(selected);
     setError("");
     setSubmitResult(null);
-    setIdkitResult(null);
+    setVerificationPayload(null);
     setVerifiedByBackend(false);
     setContentHash("");
+    setVerifyStatus("");
+    setWidgetOpen(false);
+    setRpContext(null);
+    verifySucceededRef.current = false;
     if (!selected) return;
 
     setBusyHash(true);
@@ -138,11 +157,13 @@ export default function Page() {
   async function verify() {
     setBusyVerify(true);
     setError("");
-    setIdkitResult(null);
+    setVerificationPayload(null);
     setVerifiedByBackend(false);
+    setWidgetOpen(false);
+    setRpContext(null);
+    verifySucceededRef.current = false;
 
     try {
-      logClient("Starting verification", { mode: "legacy", action: ACTION });
       if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) {
         throw new Error("Select an image first — the signal is bound to the content hash.");
       }
@@ -150,6 +171,67 @@ export default function Page() {
         throw new Error("NEXT_PUBLIC_WORLDCOIN_APP_ID is not set (must start with app_).");
       }
 
+      const isWorldApp = typeof window !== "undefined" && Boolean((window as Window & { WorldApp?: unknown }).WorldApp);
+      if (isWorldApp) {
+        logClient("Starting verification", { mode: "minikit", action: ACTION });
+        setVerifyStatus("Opening World App verification...");
+
+        const installResult =
+          typeof window !== "undefined" && (window as Window & { MiniKit?: unknown }).MiniKit
+            ? { success: true as const }
+            : MiniKit.install(APP_ID);
+        if (!installResult.success) {
+          throw new Error(`MiniKit install failed: ${installResult.errorMessage}`);
+        }
+
+        const { finalPayload } = await MiniKit.commandsAsync.verify({
+          action: ACTION,
+          signal: contentHash,
+          verification_level: VerificationLevel.Orb,
+        });
+
+        logClient("MiniKit returned verification payload", {
+          status: finalPayload?.status,
+          verification_level:
+            finalPayload && "verification_level" in finalPayload
+              ? finalPayload.verification_level
+              : Array.isArray((finalPayload as any)?.verifications)
+                ? (finalPayload as any).verifications.map((v: { verification_level: string }) => v.verification_level)
+                : undefined,
+        });
+
+        if (!finalPayload || finalPayload.status !== "success") {
+          const errorCode = finalPayload?.status === "error" ? finalPayload.error_code : "generic_error";
+          throw new Error(idkitErrorMessage(errorCode));
+        }
+
+        const proof = extractMiniKitProof(finalPayload);
+        setVerifyStatus("Verifying proof on backend...");
+        const verifyResp = await fetch("/api/verify-proof", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ proof, action: ACTION, signal: contentHash }),
+        });
+        const verifyJson = await verifyResp.json();
+        if (!verifyResp.ok || !verifyJson?.success) {
+          const detail = verifyJson?.detail ?? verifyJson;
+          logClient("Backend verification failed", detail);
+          throw new Error(`Backend verification failed: ${JSON.stringify(detail)}`);
+        }
+
+        setVerificationPayload({ kind: "minikit", proof });
+        setVerifiedByBackend(true);
+        setVerifyStatus("Verified.");
+        setError("");
+        verifySucceededRef.current = true;
+        logClient("MiniKit verification succeeded", {
+          nullifier_hash: verifyJson?.nullifier_hash,
+          verification_level: verifyJson?.verification_level,
+        });
+        return;
+      }
+
+      logClient("Starting verification", { mode: "legacy", action: ACTION });
       // Step 1 — fetch RP context from backend (signing key never leaves the server)
       setVerifyStatus("Fetching RP signature...");
       const rpTtlSeconds = 900;
@@ -175,7 +257,7 @@ export default function Page() {
       };
       setRpContext(nextRpContext);
       setWidgetOpen(true);
-      setVerifyStatus("");
+      setVerifyStatus("Awaiting confirmation in World App...");
       logClient("Opening IDKitRequestWidget", { rp_id: nextRpContext.rp_id });
     } catch (err) {
       logClient("Verification failed", String(err));
@@ -187,7 +269,7 @@ export default function Page() {
   }
 
   async function submit() {
-    if (!verifiedByBackend || !idkitResult) {
+    if (!verifiedByBackend || !verificationPayload) {
       setError("Complete World ID verification first.");
       return;
     }
@@ -208,7 +290,9 @@ export default function Page() {
           content_id: contentId.trim(),
           content_hash: contentHash,
           timestamp_ms: Date.now(),
-          idkitResponse: idkitResult,
+          ...(verificationPayload.kind === "idkit"
+            ? { idkitResponse: verificationPayload.idkitResponse }
+            : { proof: verificationPayload.proof }),
         }),
       });
       const data = (await resp.json()) as SubmitResponse;
@@ -274,7 +358,7 @@ export default function Page() {
             open={widgetOpen}
             onOpenChange={(open) => {
               setWidgetOpen(open);
-              if (!open && !verifiedByBackend) {
+              if (!open && !verifySucceededRef.current) {
                 setVerifyStatus("");
                 setError("Verification window closed before completion.");
                 logClient("Widget closed before success");
@@ -309,6 +393,11 @@ export default function Page() {
                   session_id: verifyJson?.session_id,
                   nullifier_hash: verifyJson?.nullifier_hash,
                 });
+                setVerificationPayload({ kind: "idkit", idkitResponse: result });
+                setVerifiedByBackend(true);
+                setVerifyStatus("Verified.");
+                setError("");
+                verifySucceededRef.current = true;
               } catch (err) {
                 logClient("handleVerify exception", String(err));
                 setVerifyStatus("");
@@ -316,25 +405,29 @@ export default function Page() {
               }
             }}
             onSuccess={(result) => {
-              setIdkitResult(result);
+              setVerificationPayload((prev) => prev ?? { kind: "idkit", idkitResponse: result });
               setVerifiedByBackend(true);
               setVerifyStatus("Verified.");
               setError("");
               setWidgetOpen(false);
+              verifySucceededRef.current = true;
               logClient("Widget success", { protocol_version: (result as any)?.protocol_version ?? "unknown" });
             }}
             onError={(errorCode) => {
               const msg = idkitErrorMessage(errorCode);
               setError(msg);
               setVerifyStatus("");
+              verifySucceededRef.current = false;
               logClient("IDKit widget error", { errorCode });
             }}
           />
         ) : null}
 
         <p className="hint">
-          {idkitResult
-            ? `✅ Proof captured (protocol ${(idkitResult as any).protocol_version})`
+          {verificationPayload
+            ? verificationPayload.kind === "idkit"
+              ? `✅ Proof captured (protocol ${(verificationPayload.idkitResponse as any).protocol_version})`
+              : `✅ Proof captured (${verificationPayload.proof.verification_level})`
             : "Proof: not captured yet"}
         </p>
         <p className="hint">Backend verify: {verifiedByBackend ? "✅ success" : "pending"}</p>
@@ -373,4 +466,28 @@ export default function Page() {
       </section>
     </main>
   );
+}
+
+function extractMiniKitProof(payload: MiniAppVerifySuccessPayload): MiniAppProof {
+  if ("verifications" in payload) {
+    const orbProof =
+      payload.verifications.find((verification) => verification.verification_level === VerificationLevel.Orb) ??
+      payload.verifications[0];
+    if (!orbProof) {
+      throw new Error("World App returned success without a verification payload.");
+    }
+    return {
+      proof: orbProof.proof,
+      merkle_root: orbProof.merkle_root,
+      nullifier_hash: orbProof.nullifier_hash,
+      verification_level: orbProof.verification_level,
+    };
+  }
+
+  return {
+    proof: payload.proof,
+    merkle_root: payload.merkle_root,
+    nullifier_hash: payload.nullifier_hash,
+    verification_level: payload.verification_level,
+  };
 }

@@ -40,7 +40,7 @@ function startMockWorldServer(worldPort) {
       return;
     }
 
-    if (!req.url?.startsWith("/api/v4/verify/")) {
+    if (!req.url?.startsWith("/api/v4/verify/") && !req.url?.startsWith("/api/v2/verify/")) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "not found" }));
       return;
@@ -91,6 +91,10 @@ function startNext(nextPort, worldPort) {
     ...process.env,
     PORT: String(nextPort),
     WORLDCOIN_RP_ID: process.env.WORLDCOIN_RP_ID || "rp_programmatic_test",
+    WORLDCOIN_APP_ID: process.env.WORLDCOIN_APP_ID || "app_programmatic_test",
+    NEXT_PUBLIC_WORLDCOIN_APP_ID: process.env.NEXT_PUBLIC_WORLDCOIN_APP_ID || "app_programmatic_test",
+    WORLDCOIN_ACTION: process.env.WORLDCOIN_ACTION || "upload-photo",
+    NEXT_PUBLIC_WORLDCOIN_ACTION: process.env.NEXT_PUBLIC_WORLDCOIN_ACTION || "upload-photo",
     WORLDCOIN_VERIFY_BASE_URL: `http://127.0.0.1:${worldPort}`,
     WORLDCOIN_MODE: "dev",
     RP_SIGNING_KEY: process.env.RP_SIGNING_KEY || "",
@@ -123,6 +127,12 @@ async function main() {
     const health = await fetch(`${BASE_URL}/api/healthz`).then((r) => r.json());
     assert(health.ok === true, "healthz should return ok=true");
 
+    const runId = Date.now().toString(16);
+    const idkitMerkleRoot = `0x${runId.padEnd(64, "1").slice(0, 64)}`;
+    const idkitNullifier = `0x${runId.padEnd(64, "2").slice(0, 64)}`;
+    const miniMerkleRoot = `0x${runId.padEnd(64, "3").slice(0, 64)}`;
+    const miniNullifier = `0x${runId.padEnd(64, "4").slice(0, 64)}`;
+
     const idkitResponse = {
       protocol_version: "3.0",
       nonce: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -133,8 +143,8 @@ async function main() {
           identifier: "orb",
           signal_hash: "0xsignalhash",
           proof: "0xproof-by-idkit",
-          merkle_root: "0xmerkle-by-idkit",
-          nullifier: "0xnullifier-by-idkit",
+          merkle_root: idkitMerkleRoot,
+          nullifier: idkitNullifier,
         },
       ],
     };
@@ -148,11 +158,31 @@ async function main() {
     assert(verifyProofResp.status === 200, `verify-proof should be 200, got ${verifyProofResp.status}`);
     assert(verifyProofJson.success === true, "verify-proof should return success=true");
 
+    const miniAppProof = {
+      proof: "0xproof-by-minikit",
+      merkle_root: miniMerkleRoot,
+      nullifier_hash: miniNullifier,
+      verification_level: "orb",
+    };
+
+    const miniVerifyResp = await fetch(`${BASE_URL}/api/verify-proof`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        proof: miniAppProof,
+        action: "upload-photo",
+        signal: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      }),
+    });
+    const miniVerifyJson = await miniVerifyResp.json();
+    assert(miniVerifyResp.status === 200, `mini app verify-proof should be 200, got ${miniVerifyResp.status}`);
+    assert(miniVerifyJson.success === true, "mini app verify-proof should return success=true");
+
     const submitResp = await fetch(`${BASE_URL}/api/submit-image`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        content_id: "photo-programmatic-001",
+        content_id: `photo-programmatic-${runId}-001`,
         content_hash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         idkit_response: idkitResponse,
       }),
@@ -162,9 +192,28 @@ async function main() {
     assert(submitJson.ok === true, "submit-image should return ok=true");
     assert(submitJson.payload?.world_signature?.signature_b64, "world_signature.signature_b64 missing");
     assert(
-      submitJson.worldcoin_verification_input?.signal ===
+      submitJson.payload?.worldcoin_proof?.signal ===
         "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       "signal should be bound to content_hash",
+    );
+
+    const miniSubmitResp = await fetch(`${BASE_URL}/api/submit-image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content_id: `photo-programmatic-${runId}-002`,
+        content_hash: "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        proof: miniAppProof,
+      }),
+    });
+    const miniSubmitJson = await miniSubmitResp.json();
+    assert(miniSubmitResp.status === 200, `mini app submit-image should be 200, got ${miniSubmitResp.status}`);
+    assert(miniSubmitJson.ok === true, "mini app submit-image should return ok=true");
+    assert(miniSubmitJson.payload?.world_signature?.signature_b64, "mini app world signature missing");
+    assert(
+      miniSubmitJson.payload?.worldcoin_proof?.signal ===
+        "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      "mini app signal should be bound to content_hash",
     );
 
     console.log("\nProgrammatic test passed.");

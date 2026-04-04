@@ -28,7 +28,13 @@ import { resolve } from "node:path";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { appendSubmission, hasSubmissionForNullifierAction, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
-import { verifyIdKitResponse, extractIdkitFields } from "../../../lib/worldcoin-verify";
+import {
+  verifyIdKitResponse,
+  verifyMiniAppProof,
+  extractIdkitFields,
+  extractMiniAppFields,
+  isMiniAppProof,
+} from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -37,12 +43,16 @@ type SubmitBody = {
   content_hash?: string;
   timestamp_ms?: number;
   idkitResponse?: unknown;
+  idkit_response?: unknown;
+  proof?: unknown;
+  worldcoin_proof?: unknown;
 };
 
 export async function POST(req: Request) {
   console.log("[submit-image] request received");
   try {
     const body = (await req.json()) as SubmitBody;
+    const idkitResponse = body?.idkitResponse ?? body?.idkit_response;
 
     // --- Input validation ---
     const content_id = String(body?.content_id ?? "").trim();
@@ -57,39 +67,65 @@ export async function POST(req: Request) {
       console.warn(`[submit-image] invalid content_hash format: "${content_hash}"`);
       return NextResponse.json({ error: "content_hash must be sha256:<64 hex chars>" }, { status: 400 });
     }
-    if (!body?.idkitResponse) {
-      console.warn("[submit-image] missing idkitResponse");
-      return NextResponse.json({ error: "idkitResponse is required" }, { status: 400 });
+    const miniAppProof = body?.proof ?? body?.worldcoin_proof;
+    if (!idkitResponse && !isMiniAppProof(miniAppProof)) {
+      console.warn("[submit-image] missing idkitResponse/proof");
+      return NextResponse.json({ error: "idkitResponse or proof is required" }, { status: 400 });
     }
 
     console.log(`[submit-image] content_id="${content_id}" content_hash="${content_hash}" timestamp_ms=${timestamp_ms}`);
 
     // --- Resolve action (v3 orbLegacy may omit it) ---
-    const configuredAction = process.env.WORLDCOIN_ACTION?.trim() ?? "";
-    const resultAction = String((body.idkitResponse as any)?.action ?? "").trim();
+    const configuredAction =
+      process.env.WORLDCOIN_ACTION?.trim() ?? process.env.NEXT_PUBLIC_WORLDCOIN_ACTION?.trim() ?? "";
+    const resultAction = String((idkitResponse as any)?.action ?? "").trim();
     const action = configuredAction || resultAction || "upload-photo";
 
-    // Inject action before forwarding — required by the Developer API
-    const idkitPayload = { ...(body.idkitResponse as object), action };
+    let verification;
+    let nullifier = "";
+    let verificationLevel = "";
+    let merkleRoot = "";
 
-    // --- Step 1: Re-verify proof server-side ---
-    // Forwards IDKitResult as-is to /api/v4/verify/{rp_id}.
-    console.log(`[submit-image] verifying proof action="${action}" protocol_version=${(body.idkitResponse as any)?.protocol_version ?? "unknown"}`);
-    const verification = await verifyIdKitResponse(idkitPayload);
-    if (!verification.success) {
-      console.warn("[submit-image] ✗ proof verification failed:", JSON.stringify(verification.detail));
-      return NextResponse.json(
-        { error: "World ID proof verification failed", detail: verification.detail },
-        { status: 401 },
+    if (isMiniAppProof(miniAppProof)) {
+      console.log(
+        `[submit-image] verifying mini app proof action="${action}" verification_level="${miniAppProof.verification_level}"`,
       );
+      verification = await verifyMiniAppProof(miniAppProof, action, content_hash);
+      if (!verification.success) {
+        console.warn("[submit-image] ✗ mini app proof verification failed:", JSON.stringify(verification.detail));
+        return NextResponse.json(
+          { error: "World ID proof verification failed", detail: verification.detail },
+          { status: 401 },
+        );
+      }
+      ({ nullifier, verificationLevel, merkleRoot } = extractMiniAppFields(miniAppProof));
+    } else {
+      const idkitPayload = { ...(idkitResponse as object), action };
+
+      // --- Step 1: Re-verify proof server-side ---
+      // Forwards IDKitResult as-is to /api/v4/verify/{rp_id}.
+      console.log(
+        `[submit-image] verifying proof action="${action}" protocol_version=${(idkitResponse as any)?.protocol_version ?? "unknown"}`,
+      );
+      verification = await verifyIdKitResponse(idkitPayload);
+      if (!verification.success) {
+        console.warn("[submit-image] ✗ proof verification failed:", JSON.stringify(verification.detail));
+        return NextResponse.json(
+          { error: "World ID proof verification failed", detail: verification.detail },
+          { status: 401 },
+        );
+      }
+      ({ nullifier, verificationLevel, merkleRoot } = extractIdkitFields(idkitPayload));
     }
-    console.log(`[submit-image] ✓ proof verified session_id="${verification.session_id}" environment="${verification.environment}"`);
+
+    console.log(
+      `[submit-image] ✓ proof verified session_id="${verification.session_id ?? "(none)"}" environment="${verification.environment ?? "unknown"}"`,
+    );
 
     // --- Step 2: Extract proof fields ---
     // nullifier  — unique per (user, action); used as a human-identity anchor.
-    // merkleRoot — on-chain anchor for v3 (orbLegacy).
+    // merkleRoot — on-chain anchor for v3/mini app proofs.
     // verificationLevel — e.g. "orb".
-    const { nullifier, verificationLevel, merkleRoot } = extractIdkitFields(idkitPayload);
     console.log(`[submit-image] nullifier="${nullifier}" verificationLevel="${verificationLevel}" merkleRoot="${merkleRoot || "(missing)"}"`);
     if (!nullifier) {
       console.warn("[submit-image] verified payload missing nullifier");

@@ -15,7 +15,14 @@
  */
 
 import { NextResponse } from "next/server";
-import { verifyIdKitResponse, extractIdkitFields, resolveWorldcoinRpId } from "../../../lib/worldcoin-verify";
+import {
+  verifyIdKitResponse,
+  verifyMiniAppProof,
+  extractIdkitFields,
+  extractMiniAppFields,
+  isMiniAppProof,
+  resolveWorldcoinRpId,
+} from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -24,11 +31,47 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const body = await request.json().catch(() => ({}));
     const idkitResponse = body?.idkitResponse ?? body?.idkit_result;
+    const miniAppProof = body?.proof ?? body?.worldcoin_proof;
     const requestedRpId = String(body?.rp_id ?? "").trim();
-    if (!idkitResponse) {
-      console.warn("[verify-proof] missing idkitResponse in request body");
-      return NextResponse.json({ error: "idkitResponse is required" }, { status: 400 });
+    if (!idkitResponse && !isMiniAppProof(miniAppProof)) {
+      console.warn("[verify-proof] missing idkitResponse/proof in request body");
+      return NextResponse.json({ error: "idkitResponse or proof is required" }, { status: 400 });
     }
+
+    if (isMiniAppProof(miniAppProof)) {
+      const action =
+        String(body?.action ?? process.env.WORLDCOIN_ACTION ?? process.env.NEXT_PUBLIC_WORLDCOIN_ACTION ?? "").trim() ||
+        "upload-photo";
+      const signal = String(body?.signal ?? "").trim();
+      if (!signal) {
+        console.warn("[verify-proof] missing signal for mini app proof");
+        return NextResponse.json({ error: "signal is required for mini app proof verification" }, { status: 400 });
+      }
+
+      console.log(
+        `[verify-proof] forwarding mini app proof action="${action}" verification_level="${miniAppProof.verification_level}"`,
+      );
+      const result = await verifyMiniAppProof(miniAppProof, action, signal);
+      if (result.success) {
+        const { nullifier, verificationLevel } = extractMiniAppFields(miniAppProof);
+        console.log(
+          `[verify-proof] ✓ mini app proof verified nullifier="${nullifier}" level="${verificationLevel}"`,
+        );
+        return NextResponse.json(
+          {
+            success: true,
+            nullifier_hash: nullifier,
+            verification_level: verificationLevel,
+            detail: result.detail,
+          },
+          { status: 200 },
+        );
+      }
+
+      console.warn("[verify-proof] ✗ mini app proof verification failed:", JSON.stringify(result.detail));
+      return NextResponse.json({ success: false, detail: result.detail }, { status: 401 });
+    }
+
     const configuredRpId = resolveWorldcoinRpId();
     if (requestedRpId && requestedRpId !== configuredRpId) {
       console.warn(`[verify-proof] rp_id mismatch requested="${requestedRpId}" configured="${configuredRpId}"`);
