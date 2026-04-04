@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { verifyCloudProof, type IVerifyResponse, type ISuccessResult } from "@worldcoin/minikit-js";
+import type { ISuccessResult } from "@worldcoin/minikit-js";
 import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { appendSubmission, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
@@ -63,18 +63,15 @@ export async function POST(req: Request) {
     let verification;
     if (body?.miniapp_payload) {
       const actionForVerify = configuredAction || action || "upload-photo";
-      const appIdRaw = String(process.env.APP_ID ?? process.env.WORLDCOIN_APP_ID ?? process.env.WORLDCOIN_RP_ID ?? "").trim();
-      if (!appIdRaw.startsWith("app_")) {
-        return NextResponse.json({ error: "APP_ID (app_...) is required for MiniKit cloud verification" }, { status: 500 });
-      }
-      const appId = appIdRaw as `app_${string}`;
-      const verifyRes = (await verifyCloudProof(body.miniapp_payload, appId, actionForVerify, signal)) as IVerifyResponse;
-      verification = {
-        success: verifyRes.success,
-        detail: verifyRes,
-        environment: undefined,
-        session_id: undefined,
-      };
+      verification = await verifyWorldcoinProof({
+        action: actionForVerify,
+        signal,
+        proof: String(body.miniapp_payload.proof ?? ""),
+        merkle_root: String(body.miniapp_payload.merkle_root ?? ""),
+        nullifier_hash: String(body.miniapp_payload.nullifier_hash ?? ""),
+        verification_level: String(body.miniapp_payload.verification_level ?? ""),
+        nonce: String((body.miniapp_payload as any).nonce ?? ""),
+      });
       proof = String(body.miniapp_payload.proof ?? proof).trim();
       merkle_root = String(body.miniapp_payload.merkle_root ?? merkle_root).trim();
       nullifier_hash = String(body.miniapp_payload.nullifier_hash ?? nullifier_hash).trim();

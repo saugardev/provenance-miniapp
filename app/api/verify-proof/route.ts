@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { verifyCloudProof, type IVerifyResponse, type ISuccessResult } from "@worldcoin/minikit-js";
+import type { ISuccessResult } from "@worldcoin/minikit-js";
+import { verifyWorldcoinProof } from "../../../lib/worldcoin-verify";
 
 export const runtime = "nodejs";
 
@@ -21,20 +22,21 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "action is required (set WORLDCOIN_ACTION or send action)" }, { status: 400 });
     }
     const signal = body?.signal ? String(body.signal).trim() : undefined;
-    const appIdRaw = String(process.env.APP_ID ?? process.env.WORLDCOIN_APP_ID ?? process.env.WORLDCOIN_RP_ID ?? "").trim();
-    if (!appIdRaw.startsWith("app_")) {
-      return NextResponse.json({ error: "APP_ID (app_...) is required for MiniKit cloud verification" }, { status: 500 });
-    }
-    const appId = appIdRaw as `app_${string}`;
-
-    const verifyRes = (await verifyCloudProof(body.payload, appId, action, signal)) as IVerifyResponse;
+    const verifyRes = await verifyWorldcoinProof({
+      action,
+      signal,
+      proof: String(body.payload.proof ?? ""),
+      merkle_root: String(body.payload.merkle_root ?? ""),
+      nullifier_hash: String(body.payload.nullifier_hash ?? ""),
+      verification_level: String(body.payload.verification_level ?? ""),
+      nonce: String((body.payload as any).nonce ?? ""),
+    });
     const status = verifyRes.success ? 200 : 401;
     return NextResponse.json(
       {
         success: verifyRes.success,
         action,
-        app_id: appId,
-        detail: verifyRes,
+        detail: verifyRes.detail,
       },
       { status },
     );
