@@ -67,7 +67,9 @@
   background: #1a1b1e;
 }
 
-.video {
+.mediaFrame {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -232,6 +234,56 @@
   margin: 10px 0 0;
   color: rgba(245, 243, 239, 0.72);
   font-size: 13px;
+}
+
+.progressSteps {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.progressStep {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 54px;
+}
+
+.progressCircle {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(245, 243, 239, 0.38);
+  background: rgba(245, 243, 239, 0.08);
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.progressActive {
+  border-color: rgba(133, 214, 166, 0.95);
+  background: rgba(133, 214, 166, 0.35);
+}
+
+.progressDone {
+  border-color: #46d37d;
+  background: #46d37d;
+  box-shadow: 0 0 0 3px rgba(70, 211, 125, 0.2);
+}
+
+.progressConnector {
+  height: 2px;
+  flex: 1;
+  min-width: 18px;
+  background: linear-gradient(90deg, rgba(245, 243, 239, 0.2), rgba(245, 243, 239, 0.34));
+  border-radius: 999px;
+}
+
+.progressLabel {
+  color: rgba(245, 243, 239, 0.72);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .consent {

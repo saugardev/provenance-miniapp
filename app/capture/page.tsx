@@ -3,7 +3,6 @@
 import { IDKitErrorCodes, IDKitRequestWidget, orbLegacy, type IDKitResult, type RpContext } from "@worldcoin/idkit";
 import { MiniKit, VerificationLevel, type MiniAppVerifyActionPayload } from "@worldcoin/minikit-js";
 import { Manrope } from "next/font/google";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import styles from "./page.module.css";
@@ -150,9 +149,12 @@ export default function CapturePage() {
   const [drawerDragOffset, setDrawerDragOffset] = useState<number | null>(null);
   const [overshootMaskHeight, setOvershootMaskHeight] = useState(0);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [error, setError] = useState("");
+
+  const verifyStepState = verifiedByBackend ? "done" : busyVerify ? "active" : "idle";
+  const signStepState = signedPayload ? "done" : busySign ? "active" : "idle";
+  const uploadStepState = result?.uploaded ? "done" : busyUpload ? "active" : "idle";
 
   async function getCameraStream(mode: FacingMode): Promise<MediaStream> {
     try {
@@ -607,11 +609,17 @@ export default function CapturePage() {
       <canvas ref={canvasRef} className={styles.hidden} />
 
       <section className={styles.cameraPanel}>
-        <video ref={videoRef} playsInline muted autoPlay className={`${styles.video} ${cameraReady ? "" : styles.hidden}`} />
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          autoPlay
+          className={`${styles.mediaFrame} ${cameraReady && !capture ? "" : styles.hidden}`}
+        />
         {!cameraReady && !capture ? (
           <div className={styles.placeholder}>Camera is off</div>
         ) : null}
-        {capture ? <img src={capture.previewUrl} alt="Captured" className={styles.video} /> : null}
+        {capture ? <img src={capture.previewUrl} alt="Captured" className={styles.mediaFrame} /> : null}
         <div className={styles.cameraOverlay} />
       </section>
 
@@ -684,22 +692,6 @@ export default function CapturePage() {
         </button>
 
         <div className={styles.drawerBody}>
-          <div className={styles.drawerTopActions}>
-            <button
-              className={styles.settingsButton}
-              type="button"
-              aria-label="Open settings"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Zm8.4 2.1-1.4-.2a7.5 7.5 0 0 0-.8-1.9l.8-1.2a.8.8 0 0 0-.1-1l-1.4-1.4a.8.8 0 0 0-1-.1l-1.2.8a7.5 7.5 0 0 0-1.9-.8l-.2-1.4a.8.8 0 0 0-.8-.7h-2a.8.8 0 0 0-.8.7l-.2 1.4a7.5 7.5 0 0 0-1.9.8l-1.2-.8a.8.8 0 0 0-1 .1L4 6.6a.8.8 0 0 0-.1 1l.8 1.2a7.5 7.5 0 0 0-.8 1.9l-1.4.2a.8.8 0 0 0-.7.8v2c0 .4.3.7.7.8l1.4.2a7.5 7.5 0 0 0 .8 1.9l-.8 1.2a.8.8 0 0 0 .1 1L5.4 20a.8.8 0 0 0 1 .1l1.2-.8a7.5 7.5 0 0 0 1.9.8l.2 1.4c.1.4.4.7.8.7h2c.4 0 .7-.3.8-.7l.2-1.4a7.5 7.5 0 0 0 1.9-.8l1.2.8a.8.8 0 0 0 1-.1l1.4-1.4a.8.8 0 0 0 .1-1l-.8-1.2a7.5 7.5 0 0 0 .8-1.9l1.4-.2c.4-.1.7-.4.7-.8v-2a.8.8 0 0 0-.7-.8Z"
-                  fill="currentColor"
-                />
-              </svg>
-            </button>
-          </div>
-
           {capture ? (
             <p className={styles.caption}>
               Captured at {capture.capturedAtLabel} • GPS {capture.gps.latitude.toFixed(5)}, {capture.gps.longitude.toFixed(5)}
@@ -712,9 +704,46 @@ export default function CapturePage() {
             </button>
           </div>
 
+          {capture ? (
+            <div className={styles.progressSteps} aria-label="Proof progress">
+              <div className={styles.progressStep}>
+                <span
+                  className={`${styles.progressCircle} ${
+                    verifyStepState === "done"
+                      ? styles.progressDone
+                      : verifyStepState === "active"
+                        ? styles.progressActive
+                        : ""
+                  }`}
+                />
+                <span className={styles.progressLabel}>Verify</span>
+              </div>
+              <span className={styles.progressConnector} aria-hidden="true" />
+              <div className={styles.progressStep}>
+                <span
+                  className={`${styles.progressCircle} ${
+                    signStepState === "done" ? styles.progressDone : signStepState === "active" ? styles.progressActive : ""
+                  }`}
+                />
+                <span className={styles.progressLabel}>Sign</span>
+              </div>
+              <span className={styles.progressConnector} aria-hidden="true" />
+              <div className={styles.progressStep}>
+                <span
+                  className={`${styles.progressCircle} ${
+                    uploadStepState === "done"
+                      ? styles.progressDone
+                      : uploadStepState === "active"
+                        ? styles.progressActive
+                        : ""
+                  }`}
+                />
+                <span className={styles.progressLabel}>Upload</span>
+              </div>
+            </div>
+          ) : null}
+
           {verifyStatus ? <p className={styles.caption}>{verifyStatus}</p> : null}
-          <p className={styles.caption}>Signature: {signedPayload ? "Created" : "Not created"}</p>
-          <p className={styles.caption}>Backend: {busyUpload ? "Submitting..." : result?.uploaded ? "Uploaded" : "Not uploaded"}</p>
 
           <div className={styles.actions}>
             <button className={styles.primary} disabled={!signedPayload || busyOg} onClick={publishToOg}>
@@ -787,54 +816,6 @@ export default function CapturePage() {
         />
       ) : null}
 
-      <div
-        className={`${styles.settingsBackdrop} ${settingsOpen ? styles.settingsBackdropOpen : ""}`}
-        onClick={() => setSettingsOpen(false)}
-        aria-hidden={!settingsOpen}
-      />
-      <section
-        className={`${styles.settingsOverlay} ${settingsOpen ? styles.settingsOverlayOpen : ""}`}
-        aria-hidden={!settingsOpen}
-      >
-        <div className={styles.settingsHeader}>
-          <h2 className={styles.settingsTitle}>Settings</h2>
-          <button className={styles.settingsClose} type="button" onClick={() => setSettingsOpen(false)}>
-            Done
-          </button>
-        </div>
-
-        <div className={styles.settingsBody}>
-          <div className={styles.settingsSection}>
-            <p className={styles.settingsSectionTitle}>Alerts</p>
-            <button className={styles.settingsItem} type="button">Friends Photos</button>
-          </div>
-
-          <div className={styles.settingsSection}>
-            <p className={styles.settingsSectionTitle}>Customize</p>
-            <button className={styles.settingsItem} type="button">Appearance</button>
-          </div>
-
-          <div className={styles.settingsSection}>
-            <p className={styles.settingsSectionTitle}>Manage</p>
-            <button className={styles.settingsItem} type="button">import photos</button>
-            <button className={styles.settingsItem} type="button">export photos</button>
-          </div>
-
-          <div className={styles.settingsSection}>
-            <p className={styles.settingsSectionTitle}>Help</p>
-            <button className={styles.settingsItem} type="button">FAQ</button>
-            <button className={styles.settingsItem} type="button">Send Feedback</button>
-            <button className={styles.settingsItem} type="button">whats new</button>
-          </div>
-
-          <div className={styles.settingsSection}>
-            <p className={styles.settingsSectionTitle}>More</p>
-            <button className={styles.settingsItem} type="button">Invite friends</button>
-            <button className={styles.settingsItem} type="button">About</button>
-            <Link className={styles.settingsItemLink} href="/terms">Terms</Link>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
