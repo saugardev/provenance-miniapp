@@ -192,6 +192,21 @@ export default function CapturePage() {
     setCameraReady(true);
   }
 
+  function hasLiveCameraStream() {
+    const stream = streamRef.current;
+    if (!stream) return false;
+    return stream.getVideoTracks().some((track) => track.readyState === "live");
+  }
+
+  async function ensureLiveCameraPreview() {
+    if (hasLiveCameraStream()) {
+      setCameraReady(true);
+      return;
+    }
+    setCameraReady(false);
+    await openCameraWithPermissionCheck();
+  }
+
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -286,6 +301,7 @@ export default function CapturePage() {
     setDrawerDragOffset(null);
     if (!nextOpen && capture) {
       resetToCameraPreview();
+      void ensureLiveCameraPreview();
     }
 
     if (overshootMaskTimeoutRef.current) clearTimeout(overshootMaskTimeoutRef.current);
@@ -707,6 +723,7 @@ export default function CapturePage() {
               const next = !v;
               if (!next && capture) {
                 resetToCameraPreview();
+                void ensureLiveCameraPreview();
               }
               return next;
             });
@@ -786,7 +803,6 @@ export default function CapturePage() {
           </div>
 
           {error ? <p className={styles.error}>{error}</p> : null}
-          {result ? <pre className={styles.result}>{JSON.stringify(result, null, 2)}</pre> : null}
         </div>
       </section>
 
