@@ -172,12 +172,12 @@ export default function HomeClient({ showDevButton }: { showDevButton: boolean }
               disabled={authBusy || !authChecked}
               onClick={signInWithWallet}
             >
-              {authBusy ? "Signing in..." : !authChecked ? "Loading..." : "Sign in with wallet"}
+              {authBusy ? "Signing in..." : !authChecked ? "Loading..." : "Sign in"}
             </button>
           )}
           {authAddress ? (
             <div className={styles.heroSessionRow}>
-              <p className={styles.heroSessionText}>Signed in once as {shortAddress(authAddress)}</p>
+              <p className={styles.heroSessionText}>Signed in as {shortAddress(authAddress)}</p>
               <button
                 type="button"
                 className={styles.heroSessionButton}
@@ -189,7 +189,7 @@ export default function HomeClient({ showDevButton }: { showDevButton: boolean }
           ) : null}
           {authError ? <p className={styles.heroAuthError}>{authError}</p> : null}
           <p className={styles.heroTerms}>
-            By pressing &ldquo;Prove reality&rdquo; you accept our <Link href="/terms">Terms and Conditions</Link>.
+            By pressing &ldquo;Sign in&rdquo; you accept our <Link href="/terms">Terms and Conditions</Link>.
           </p>
         </div>
       </div>
