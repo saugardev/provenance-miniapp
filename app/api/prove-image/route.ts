@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       found: true,
-      prove_url: `/prove/${record.id}`,
+      prove_url: `/prove/hash/${record.contentHash.replace(/^sha256:/i, "").toLowerCase()}`,
       record: {
         id: record.id,
         created_at: record.createdAt,

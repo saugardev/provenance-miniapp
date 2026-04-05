@@ -566,12 +566,12 @@ export default function CapturePage() {
   }
 
   function shareOnX() {
-    const recordId = result?.image_record_id;
-    if (!recordId) {
-      setError("No proven image record available to share yet.");
+    const hashSlug = extractHashSlug(signedPayload) ?? (capture ? capture.contentHash.replace(/^sha256:/i, "") : null);
+    if (!hashSlug || !/^[0-9a-f]{64}$/i.test(hashSlug)) {
+      setError("No proven image hash available to share yet.");
       return;
     }
-    const proofUrl = `${window.location.origin}/prove/${recordId}`;
+    const proofUrl = `${window.location.origin}/prove/hash/${hashSlug.toLowerCase()}`;
     const text = "I created a real picture. You can prove it here:";
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(proofUrl)}`;
     window.open(intent, "_blank", "noopener,noreferrer");
@@ -695,7 +695,7 @@ export default function CapturePage() {
             <button className={styles.primary} disabled={!signedPayload || busyOg} onClick={publishToOg}>
               {busyOg ? "Submitting..." : "Submit to 0G"}
             </button>
-            <button className={styles.secondary} disabled={!result?.image_record_id} onClick={shareOnX}>
+            <button className={styles.secondary} disabled={!signedPayload} onClick={shareOnX}>
               Post on X
             </button>
           </div>
@@ -834,4 +834,11 @@ function extractMiniKitProof(payload: MiniAppVerifySuccessPayload): MiniAppProof
     nullifier_hash: payload.nullifier_hash,
     verification_level: payload.verification_level,
   };
+}
+
+function extractHashSlug(payload: unknown): string | null {
+  const value = payload as { entry?: { content_hash?: string } } | null | undefined;
+  const contentHash = String(value?.entry?.content_hash ?? "").trim();
+  if (!/^sha256:[0-9a-f]{64}$/i.test(contentHash)) return null;
+  return contentHash.replace(/^sha256:/i, "");
 }
