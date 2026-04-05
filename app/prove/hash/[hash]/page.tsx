@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { findUploadedImageByContentHash } from "../../../../src/image-store.ts";
+import VerifyMediaButton from "./verify-media-button";
 
 type PageProps = {
   params: Promise<{ hash: string }>;
@@ -102,13 +103,18 @@ export default async function ProveByHashPage({ params }: PageProps) {
           Action: <code>{record.action}</code>
           <br />
           Verification level: <code>{record.verificationLevel}</code>
-          <br />
-          Record id: <code>{record.id}</code>
         </p>
         <img
           alt="Attested real photo"
           src={`data:${record.imageMimeType};base64,${record.imageBase64}`}
           style={{ width: "100%", maxHeight: 580, objectFit: "contain", borderRadius: 14 }}
+        />
+        <VerifyMediaButton
+          expectedHashHex={normalizedHash}
+          imageBase64={record.imageBase64}
+          signatureMessage={record.worldSignatureMessage}
+          signatureB64={record.worldSignatureB64}
+          publicKeyPem={record.worldSignaturePublicKeyPem}
         />
         <details style={{ marginTop: 14 }}>
           <summary>Signature details</summary>
