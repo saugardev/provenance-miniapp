@@ -604,6 +604,23 @@ export default function CapturePage() {
     window.open(intent, "_blank", "noopener,noreferrer");
   }
 
+  async function copyShareLink() {
+    const hashSlug = extractHashSlug(signedPayload) ?? (capture ? capture.contentHash.replace(/^sha256:/i, "") : null);
+    if (!hashSlug || !/^[0-9a-f]{64}$/i.test(hashSlug)) {
+      setError("No proven image hash available to share yet.");
+      return;
+    }
+
+    const proofUrl = `${window.location.origin}/prove/hash/${hashSlug.toLowerCase()}`;
+    try {
+      await navigator.clipboard.writeText(proofUrl);
+      setError("");
+      setVerifyStatus("Share link copied.");
+    } catch {
+      setError("Could not copy the share link.");
+    }
+  }
+
   return (
     <main className={`${styles.page} ${manrope.className}`}>
       <canvas ref={canvasRef} className={styles.hidden} />
@@ -751,6 +768,9 @@ export default function CapturePage() {
             </button>
             <button className={styles.secondary} disabled={!signedPayload} onClick={shareOnX}>
               Post on X
+            </button>
+            <button className={styles.secondary} disabled={!signedPayload} onClick={copyShareLink}>
+              Share link
             </button>
           </div>
 
