@@ -164,8 +164,8 @@ export default function CapturePage() {
       : busyUpload
         ? "Submitting..."
         : proveCompleted
-          ? "Humanity proved"
-          : "Prove humanity";
+          ? "Reality proved"
+          : "Prove reality";
 
   async function getCameraStream(mode: FacingMode): Promise<MediaStream> {
     try {
@@ -442,7 +442,7 @@ export default function CapturePage() {
     }
   }
 
-  async function verifyHumanity(autoSign = false) {
+  async function verifyReality(autoSign = false) {
     if (!capture) {
       setError("Capture a photo first.");
       return;
@@ -536,13 +536,13 @@ export default function CapturePage() {
     }
   }
 
-  async function proveHumanity() {
+  async function proveReality() {
     if (!capture) {
       setError("Capture a photo first.");
       return;
     }
     if (!verifiedByBackend || !verificationPayload) {
-      await verifyHumanity(true);
+      await verifyReality(true);
       return;
     }
     await signProvenance(verificationPayload, capture);
@@ -577,7 +577,7 @@ export default function CapturePage() {
 
   async function publishToOg() {
     if (!signedPayload) {
-      setError("Prove humanity first.");
+      setError("Prove reality first.");
       return;
     }
 
@@ -727,7 +727,7 @@ export default function CapturePage() {
           ) : null}
 
           <div className={styles.actions}>
-            <button className={styles.primary} disabled={!capture || proveBusy || proveCompleted} onClick={proveHumanity}>
+            <button className={styles.primary} disabled={!capture || proveBusy || proveCompleted} onClick={proveReality}>
               {proveButtonLabel}
             </button>
           </div>

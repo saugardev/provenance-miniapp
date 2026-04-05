@@ -163,7 +163,7 @@ export default function HomeClient({ showDevButton }: { showDevButton: boolean }
           <p className={styles.heroSubtitle}>Prove your photos are real and defend yourself from AI</p>
           {authAddress ? (
             <Link href="/capture" className={styles.heroCta}>
-              Prove humanity
+              Prove reality
             </Link>
           ) : (
             <button
@@ -189,7 +189,7 @@ export default function HomeClient({ showDevButton }: { showDevButton: boolean }
           ) : null}
           {authError ? <p className={styles.heroAuthError}>{authError}</p> : null}
           <p className={styles.heroTerms}>
-            By pressing &ldquo;Prove humanity&rdquo; you accept our <Link href="/terms">Terms and Conditions</Link>.
+            By pressing &ldquo;Prove reality&rdquo; you accept our <Link href="/terms">Terms and Conditions</Link>.
           </p>
         </div>
       </div>

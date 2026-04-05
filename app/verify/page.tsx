@@ -637,7 +637,7 @@ export default function Page() {
             disabled={busySign || busyUpload || !verifiedByBackend || !gpsLocation}
             onClick={submit}
           >
-            {busySign ? "Proving..." : "Prove humanity"}
+            {busySign ? "Proving..." : "Prove reality"}
           </button>
           <button
             className="button"
