@@ -2,6 +2,12 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import type { MiniAppWalletAuthSuccessPayload } from "@worldcoin/minikit-js";
 import { verifySiweMessage } from "@worldcoin/minikit-js";
+import {
+  MINIAPP_SESSION_MAX_AGE_SECONDS,
+  MINIAPP_WALLET_COOKIE,
+  MINIAPP_WALLET_EXPIRES_COOKIE,
+  SIWE_NONCE_COOKIE,
+} from "../../../../lib/auth-session";
 
 export const runtime = "nodejs";
 
@@ -37,12 +43,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ isValid: false, error: "Missing address in SIWE message" }, { status: 400 });
     }
     const response = NextResponse.json({ isValid: true, address });
-    response.cookies.delete("siwe");
-    response.cookies.set("miniapp_wallet", address, {
+    const expiresAtMs = Date.now() + MINIAPP_SESSION_MAX_AGE_SECONDS * 1000;
+    response.cookies.delete(SIWE_NONCE_COOKIE);
+    response.cookies.set(MINIAPP_WALLET_COOKIE, address, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: MINIAPP_SESSION_MAX_AGE_SECONDS,
+      path: "/",
+    });
+    response.cookies.set(MINIAPP_WALLET_EXPIRES_COOKIE, String(expiresAtMs), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: MINIAPP_SESSION_MAX_AGE_SECONDS,
       path: "/",
     });
     return response;

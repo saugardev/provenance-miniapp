@@ -40,6 +40,7 @@ import { loadOrCreateKeyMaterial } from "../../../src/key-material.ts";
 import { resolveRuntimeStateDir } from "../../../src/runtime-state-dir.ts";
 import { appendSubmission, hasSubmissionForNullifierActionContent, loadState, saveState } from "../../../src/state.ts";
 import { buildWorldcoinFirstEntry, type WorldcoinProof } from "../../../src/worldcoin-first-entry.ts";
+import { clearMiniAppWalletCookies, readMiniAppWalletSession } from "../../../lib/auth-session";
 import {
   verifyIdKitResponse,
   verifyMiniAppProof,
@@ -78,12 +79,15 @@ export async function POST(req: Request) {
   console.log("[submit-image] request received");
   try {
     const cookieStore = await cookies();
-    const walletAddress = String(cookieStore.get("miniapp_wallet")?.value ?? "").trim();
+    const session = readMiniAppWalletSession(cookieStore);
+    const walletAddress = session.walletAddress;
     if (!walletAddress) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Authentication required. Sign in with wallet before uploading." },
         { status: 401 },
       );
+      if (session.expired) clearMiniAppWalletCookies(response.cookies);
+      return response;
     }
 
     const body = (await req.json()) as SubmitBody;

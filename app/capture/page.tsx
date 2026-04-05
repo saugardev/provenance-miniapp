@@ -155,6 +155,17 @@ export default function CapturePage() {
   const verifyStepState = verifiedByBackend ? "done" : busyVerify ? "active" : "idle";
   const signStepState = signedPayload ? "done" : busySign ? "active" : "idle";
   const uploadStepState = result?.uploaded ? "done" : busyUpload ? "active" : "idle";
+  const proveCompleted = Boolean(result?.uploaded);
+  const proveBusy = busyVerify || busySign || busyUpload;
+  const proveButtonLabel = busyVerify
+    ? "Verifying..."
+    : busySign
+      ? "Proving..."
+      : busyUpload
+        ? "Submitting..."
+        : proveCompleted
+          ? "Humanity proved"
+          : "Prove humanity";
 
   async function getCameraStream(mode: FacingMode): Promise<MediaStream> {
     try {
@@ -716,8 +727,8 @@ export default function CapturePage() {
           ) : null}
 
           <div className={styles.actions}>
-            <button className={styles.primary} disabled={!capture || busyVerify || busySign || busyUpload} onClick={proveHumanity}>
-              {busyVerify ? "Verifying..." : busySign ? "Proving..." : busyUpload ? "Submitting..." : "Prove humanity"}
+            <button className={styles.primary} disabled={!capture || proveBusy || proveCompleted} onClick={proveHumanity}>
+              {proveButtonLabel}
             </button>
           </div>
 

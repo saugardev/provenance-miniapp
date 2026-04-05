@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { canonicalMessage, sha256Hex, verifyWorldSignature, type WorldcoinFirstEntryPayload } from "../../../src/worldcoin-first-entry.ts";
 import { persistUploadedImage } from "../../../src/image-store.ts";
+import { clearMiniAppWalletCookies, readMiniAppWalletSession } from "../../../lib/auth-session";
 
 export const runtime = "nodejs";
 
@@ -33,12 +34,15 @@ export async function POST(req: Request) {
   console.log("[upload-image] request received");
   try {
     const cookieStore = await cookies();
-    const walletAddress = String(cookieStore.get("miniapp_wallet")?.value ?? "").trim();
+    const session = readMiniAppWalletSession(cookieStore);
+    const walletAddress = session.walletAddress;
     if (!walletAddress) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Authentication required. Sign in with wallet before uploading." },
         { status: 401 },
       );
+      if (session.expired) clearMiniAppWalletCookies(response.cookies);
+      return response;
     }
 
     const body = (await req.json()) as UploadBody;
