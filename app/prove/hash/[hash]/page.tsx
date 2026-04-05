@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { resolveBaseUrl } from "../../../../lib/base-url";
 import { findUploadedImageByContentHash } from "../../../../src/image-store.ts";
 import VerifyMediaButton from "./verify-media-button";
 import styles from "./page.module.css";
@@ -8,18 +9,23 @@ type PageProps = {
   params: Promise<{ hash: string }>;
 };
 
-function baseUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
-}
-
 function normalizeHash(hash: string): string {
   return String(hash ?? "").trim().toLowerCase();
+}
+
+async function findRecordSafe(normalizedHash: string) {
+  try {
+    return await findUploadedImageByContentHash(`sha256:${normalizedHash}`);
+  } catch {
+    return null;
+  }
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { hash } = await params;
   const normalizedHash = normalizeHash(hash);
-  const url = `${baseUrl()}/prove/hash/${normalizedHash}`;
+  const baseUrl = await resolveBaseUrl();
+  const url = `${baseUrl}/prove/hash/${normalizedHash}`;
 
   if (!/^[0-9a-f]{64}$/.test(normalizedHash)) {
     return {
@@ -30,7 +36,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const record = await findUploadedImageByContentHash(`sha256:${normalizedHash}`);
+  const record = await findRecordSafe(normalizedHash);
   if (!record) {
     return {
       title: "Proof not found",
@@ -40,7 +46,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const imageUrl = `${baseUrl()}/api/prove-image/hash/${normalizedHash}/image`;
+  const imageUrl = `${baseUrl}/prove/hash/${normalizedHash}/opengraph-image`;
   const title = "Real photo proof";
   const description = "This image hash matches a photo attested by a real World-verified human.";
 
@@ -80,7 +86,7 @@ export default async function ProveByHashPage({ params }: PageProps) {
     );
   }
 
-  const record = await findUploadedImageByContentHash(`sha256:${normalizedHash}`);
+  const record = await findRecordSafe(normalizedHash);
   if (!record) {
     return (
       <main className={styles.page}>

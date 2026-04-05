@@ -1,20 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { resolveBaseUrl } from "../../../lib/base-url";
 import { findUploadedImageById } from "../../../src/image-store.ts";
 
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-function baseUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
-}
-
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id: rawId } = await params;
   const id = Number(rawId);
   const record = await findUploadedImageById(id);
-  const url = `${baseUrl()}/prove/${rawId}`;
+  const baseUrl = await resolveBaseUrl();
+  const url = `${baseUrl}/prove/${rawId}`;
 
   if (!record) {
     return {
@@ -25,7 +23,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const imageUrl = `${baseUrl()}/api/prove-image/${record.id}/image`;
+  const imageUrl = `${baseUrl}/api/prove-image/${record.id}/image`;
   const title = "Real photo proof";
   const description = `This image was attested by a real World-verified human. Proof record #${record.id}.`;
 
