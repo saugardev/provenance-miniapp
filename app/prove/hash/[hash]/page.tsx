@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { findUploadedImageByContentHash } from "../../../../src/image-store.ts";
 import VerifyMediaButton from "./verify-media-button";
+import styles from "./page.module.css";
 
 type PageProps = {
   params: Promise<{ hash: string }>;
@@ -69,11 +70,11 @@ export default async function ProveByHashPage({ params }: PageProps) {
 
   if (!/^[0-9a-f]{64}$/.test(normalizedHash)) {
     return (
-      <main style={{ minHeight: "100dvh", background: "#0c0c0d", color: "#f5f3ef", padding: 20 }}>
-        <div style={{ maxWidth: 760, margin: "0 auto" }}>
-          <h1>Invalid proof hash</h1>
-          <p>The hash in this URL is invalid.</p>
-          <Link href="/prove" style={{ color: "#fff" }}>Try another image</Link>
+      <main className={styles.page}>
+        <div className={styles.container}>
+          <h1 className={styles.title}>Invalid proof hash</h1>
+          <p className={styles.subtitle}>The hash in this URL is invalid.</p>
+          <Link href="/prove" className={styles.backLink}>Try another image</Link>
         </div>
       </main>
     );
@@ -82,54 +83,67 @@ export default async function ProveByHashPage({ params }: PageProps) {
   const record = await findUploadedImageByContentHash(`sha256:${normalizedHash}`);
   if (!record) {
     return (
-      <main style={{ minHeight: "100dvh", background: "#0c0c0d", color: "#f5f3ef", padding: 20 }}>
-        <div style={{ maxWidth: 760, margin: "0 auto" }}>
-          <h1>Proof not found</h1>
-          <p>No image proof exists for this hash.</p>
-          <Link href="/prove" style={{ color: "#fff" }}>Try another image</Link>
+      <main className={styles.page}>
+        <div className={styles.container}>
+          <h1 className={styles.title}>Proof not found</h1>
+          <p className={styles.subtitle}>No image proof exists for this hash.</p>
+          <Link href="/prove" className={styles.backLink}>Try another image</Link>
         </div>
       </main>
     );
   }
 
   return (
-    <main style={{ minHeight: "100dvh", background: "#0c0c0d", color: "#f5f3ef", padding: 20 }}>
-      <div style={{ maxWidth: 860, margin: "0 auto" }}>
-        <h1 style={{ marginTop: 0 }}>Real-user image proof</h1>
-        <p style={{ color: "rgba(245,243,239,0.72)" }}>
-          Hash <code>sha256:{normalizedHash}</code> is attested by wallet <code>{record.userWalletAddress ?? "unknown"}</code>.
+    <main className={styles.page}>
+      <div className={styles.container}>
+        <h1 className={styles.title}>Real-user image proof</h1>
+        <p className={styles.subtitle}>
+          This page proves the image hash is tied to a World-verified human attestation and a backend signature.
         </p>
-        <p style={{ color: "rgba(245,243,239,0.72)" }}>
-          Action: <code>{record.action}</code>
-          <br />
-          Verification level: <code>{record.verificationLevel}</code>
-        </p>
-        <img
-          alt="Attested real photo"
-          src={`data:${record.imageMimeType};base64,${record.imageBase64}`}
-          style={{ width: "100%", maxHeight: 580, objectFit: "contain", borderRadius: 14 }}
-        />
-        <VerifyMediaButton
-          expectedHashHex={normalizedHash}
-          imageBase64={record.imageBase64}
-          signatureMessage={record.worldSignatureMessage}
-          signatureB64={record.worldSignatureB64}
-          publicKeyPem={record.worldSignaturePublicKeyPem}
-        />
-        <details style={{ marginTop: 14 }}>
-          <summary>Signature details</summary>
-          <pre style={{ whiteSpace: "pre-wrap" }}>
-            {JSON.stringify(
-              {
-                message: record.worldSignatureMessage,
-                signature_b64: record.worldSignatureB64,
-                public_key_pem: record.worldSignaturePublicKeyPem,
-              },
-              null,
-              2,
-            )}
-          </pre>
-        </details>
+
+        <div className={styles.grid}>
+          <section className={styles.card}>
+            <p className={styles.label}>Image</p>
+            <img
+              alt="Attested real photo"
+              src={`data:${record.imageMimeType};base64,${record.imageBase64}`}
+              className={styles.image}
+            />
+          </section>
+
+          <section className={styles.card}>
+            <p className={styles.label}>Attestation</p>
+            <p className={styles.monoLine}>sha256:{normalizedHash}</p>
+            <p className={styles.kv}>
+              Wallet: <code>{record.userWalletAddress ?? "unknown"}</code>
+              <br />
+              Action: <code>{record.action}</code>
+              <br />
+              Verification level: <code>{record.verificationLevel}</code>
+            </p>
+            <VerifyMediaButton
+              expectedHashHex={normalizedHash}
+              imageBase64={record.imageBase64}
+              signatureMessage={record.worldSignatureMessage}
+              signatureB64={record.worldSignatureB64}
+              publicKeyPem={record.worldSignaturePublicKeyPem}
+            />
+            <details style={{ marginTop: 14 }}>
+              <summary>Signature details</summary>
+              <pre style={{ whiteSpace: "pre-wrap" }}>
+                {JSON.stringify(
+                  {
+                    message: record.worldSignatureMessage,
+                    signature_b64: record.worldSignatureB64,
+                    public_key_pem: record.worldSignaturePublicKeyPem,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
+          </section>
+        </div>
       </div>
     </main>
   );

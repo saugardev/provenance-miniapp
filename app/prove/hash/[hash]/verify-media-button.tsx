@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import styles from "./verify-media-button.module.css";
 
 type Props = {
   expectedHashHex: string;
@@ -61,6 +62,7 @@ export default function VerifyMediaButton({
   const [steps, setSteps] = useState<
     Array<{ label: string; ok: boolean; detail: string }>
   >([]);
+  const signedHash = hashInsideSignedMessage(signatureMessage);
 
   async function verifyMedia() {
     setBusy(true);
@@ -129,31 +131,38 @@ export default function VerifyMediaButton({
   }
 
   return (
-    <div style={{ marginTop: 12 }}>
+    <div className={styles.wrap}>
+      <div className={styles.inputs}>
+        <p className={styles.title}>What Is Computed</p>
+        <p className={styles.mono}>1) SHA-256 over the shown image bytes</p>
+        <p className={styles.mono}>2) Compare computed hash with URL hash</p>
+        <p className={styles.mono}>3) Compare computed hash with signed message hash</p>
+        <p className={styles.mono}>4) Verify Ed25519 signature over signed message</p>
+        <p className={styles.mono}>URL hash: {expectedHashHex}</p>
+        <p className={styles.mono}>Message hash: {signedHash ?? "n/a"}</p>
+      </div>
       <button
         type="button"
         onClick={verifyMedia}
         disabled={busy}
-        style={{
-          border: "1px solid rgba(255,255,255,0.25)",
-          background: "rgba(255,255,255,0.08)",
-          color: "#fff",
-          borderRadius: 999,
-          padding: "10px 16px",
-          cursor: busy ? "wait" : "pointer",
-        }}
+        className={styles.button}
       >
         {busy ? "Verifying..." : "Verify media"}
       </button>
-      {summary ? <p style={{ marginTop: 10, color: summary.startsWith("Verified") ? "#b9ffc9" : "#ffb3b3" }}>{summary}</p> : null}
+      {summary ? (
+        <p className={summary.startsWith("Verified") ? styles.summaryOk : styles.summaryFail}>{summary}</p>
+      ) : null}
       {steps.length ? (
-        <ul style={{ marginTop: 8, paddingLeft: 18 }}>
-          {steps.map((step) => (
-            <li key={step.label} style={{ color: step.ok ? "#b9ffc9" : "#ffb3b3", marginBottom: 6 }}>
+        <div className={styles.steps}>
+          <p className={styles.title}>Verification Result</p>
+          <ul className={styles.stepList}>
+            {steps.map((step) => (
+              <li key={step.label} className={step.ok ? styles.stepItemOk : styles.stepItemFail}>
               <strong>{step.label}:</strong> {step.detail}
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
     </div>
   );

@@ -1,0 +1,83 @@
+.page {
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(97, 160, 255, 0.16), transparent 55%),
+    radial-gradient(900px 500px at -10% 20%, rgba(114, 255, 196, 0.12), transparent 60%),
+    #0d1014;
+  color: #f6f8fb;
+  padding: 28px 16px 36px;
+}
+
+.container {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(30px, 5vw, 48px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 12px 0 0;
+  color: rgba(246, 248, 251, 0.74);
+  line-height: 1.5;
+}
+
+.grid {
+  margin-top: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.card {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(8, 12, 18, 0.7);
+  backdrop-filter: blur(8px);
+  padding: 16px;
+}
+
+.label {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: rgba(246, 248, 251, 0.58);
+}
+
+.monoLine {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+  color: rgba(246, 248, 251, 0.92);
+}
+
+.kv {
+  margin: 8px 0 0;
+  color: rgba(246, 248, 251, 0.82);
+  line-height: 1.55;
+}
+
+.image {
+  width: 100%;
+  max-height: 620px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.backLink {
+  color: #fff;
+  text-underline-offset: 2px;
+}
+
+@media (min-width: 860px) {
+  .grid {
+    grid-template-columns: 1.05fr 0.95fr;
+  }
+}
