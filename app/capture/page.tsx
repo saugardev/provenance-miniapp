@@ -22,6 +22,7 @@ type SubmitResponse = {
   image_record_id?: number;
   signed?: boolean;
   uploaded?: boolean;
+  og_explorer_links?: string[];
   error?: string;
   detail?: unknown;
 };
@@ -145,6 +146,7 @@ export default function CapturePage() {
   const [busyUpload, setBusyUpload] = useState(false);
   const [signedPayload, setSignedPayload] = useState<unknown>(null);
   const [result, setResult] = useState<SubmitResponse | null>(null);
+  const [ogExplorerLinks, setOgExplorerLinks] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerDragOffset, setDrawerDragOffset] = useState<number | null>(null);
   const [overshootMaskHeight, setOvershootMaskHeight] = useState(0);
@@ -276,6 +278,7 @@ export default function CapturePage() {
     }
     setCapture(null);
     setResult(null);
+    setOgExplorerLinks([]);
     setSignedPayload(null);
     setVerificationPayload(null);
     setVerifiedByBackend(false);
@@ -611,6 +614,7 @@ export default function CapturePage() {
       });
       const data = (await resp.json()) as SubmitResponse;
       setResult(data);
+      setOgExplorerLinks(Array.isArray(data.og_explorer_links) ? data.og_explorer_links.filter(Boolean) : []);
       if (!resp.ok) setError(data.error ?? `Request failed (${resp.status})`);
     } catch (err) {
       setError(String(err));
@@ -801,6 +805,15 @@ export default function CapturePage() {
               Share link
             </button>
           </div>
+
+          {ogExplorerLinks[0] ? (
+            <p className={styles.caption}>
+              0G link:{" "}
+              <a href={ogExplorerLinks[0]} target="_blank" rel="noreferrer" className={styles.techLink}>
+                View on explorer
+              </a>
+            </p>
+          ) : null}
 
           {error ? <p className={styles.error}>{error}</p> : null}
         </div>

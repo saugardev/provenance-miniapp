@@ -22,6 +22,16 @@ function isSignedPayload(value: unknown): value is WorldcoinFirstEntryPayload {
   );
 }
 
+function dedupe(list: string[]): string[] {
+  return Array.from(new Set(list.filter(Boolean)));
+}
+
+function makeOgExplorerLinks(txHashes: string[]): string[] {
+  const base = String(process.env.OG_CHAIN_EXPLORER_BASE_URL ?? "https://chainscan-galileo.0g.ai").trim().replace(/\/+$/, "");
+  if (!base) return [];
+  return dedupe(txHashes.map((hash) => `${base}/tx/${hash}`));
+}
+
 export async function POST(req: Request) {
   console.log("[publish-og] request received");
   try {
@@ -61,6 +71,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       submitted_to_og: ogStorage.published,
+      og_explorer_links: makeOgExplorerLinks(ogStorage.tx_hashes),
       og_storage: ogStorage,
     });
   } catch (err) {
