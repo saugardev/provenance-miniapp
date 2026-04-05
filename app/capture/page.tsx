@@ -205,6 +205,11 @@ export default function CapturePage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    void openCameraWithPermissionCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function getClosedDrawerOffset(): number {
     const drawerEl = drawerRef.current;
     if (!drawerEl) return 340;
@@ -237,6 +242,23 @@ export default function CapturePage() {
     setDrawerDragOffset(applyElasticBounds(rawOffset, closedOffset));
   }
 
+  function resetToCameraPreview() {
+    if (capture?.previewUrl) {
+      URL.revokeObjectURL(capture.previewUrl);
+    }
+    setCapture(null);
+    setResult(null);
+    setSignedPayload(null);
+    setVerificationPayload(null);
+    setVerifiedByBackend(false);
+    setVerifyStatus("");
+    setWidgetOpen(false);
+    setRpContext(null);
+    setError("");
+    verifySucceededRef.current = false;
+    autoSignAfterVerifyRef.current = false;
+  }
+
   function onDrawerPointerEnd() {
     if (!draggingRef.current) return;
     draggingRef.current = false;
@@ -249,6 +271,9 @@ export default function CapturePage() {
       : clamped < closedOffset * 0.75;
     setDrawerOpen(nextOpen);
     setDrawerDragOffset(null);
+    if (!nextOpen && capture) {
+      resetToCameraPreview();
+    }
 
     if (overshootMaskTimeoutRef.current) clearTimeout(overshootMaskTimeoutRef.current);
     if (releasedOvershoot > 0) {
@@ -591,37 +616,31 @@ export default function CapturePage() {
       </section>
 
       <div className={styles.floatingCaptureControls}>
-        {cameraReady ? (
-          <>
-            <button
-              className={styles.shutterButton}
-              aria-label={busyCapture ? "Capturing photo" : "Take photo"}
-              disabled={busyCapture}
-              onClick={quickPhoto}
-            >
-              <span className={styles.shutterInner} />
-            </button>
-            <button
-              className={styles.switchCameraButton}
-              type="button"
-              onClick={switchCamera}
-              aria-label="Switch camera"
-              disabled={busyCamera || busyCapture}
-            >
-              {busyCamera ? (
-                "..."
-              ) : (
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3" />
-                </svg>
-              )}
-            </button>
-          </>
-        ) : (
-          <button className={styles.quickButton} disabled={busyCamera || busyCapture} onClick={quickPhoto}>
-            {busyCamera ? "Enabling..." : "Enable camera"}
+        <>
+          <button
+            className={styles.shutterButton}
+            aria-label={busyCapture ? "Capturing photo" : cameraReady ? "Take photo" : "Request camera permissions"}
+            disabled={busyCapture || busyCamera}
+            onClick={quickPhoto}
+          >
+            <span className={styles.shutterInner} />
           </button>
-        )}
+          <button
+            className={styles.switchCameraButton}
+            type="button"
+            onClick={switchCamera}
+            aria-label="Switch camera"
+            disabled={!cameraReady || busyCamera || busyCapture}
+          >
+            {busyCamera ? (
+              "..."
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3" />
+              </svg>
+            )}
+          </button>
+        </>
       </div>
 
       <div className={styles.scrollPad} />
@@ -648,7 +667,13 @@ export default function CapturePage() {
           type="button"
           onClick={() => {
             if (draggedRef.current) return;
-            setDrawerOpen((v) => !v);
+            setDrawerOpen((v) => {
+              const next = !v;
+              if (!next && capture) {
+                resetToCameraPreview();
+              }
+              return next;
+            });
           }}
           onPointerDown={onDrawerPointerDown}
           onPointerMove={onDrawerPointerMove}
